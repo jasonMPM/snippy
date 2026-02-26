@@ -16,4 +16,4 @@ docker-compose.yml
 .DS_Store
 venv/
 .venv/
-{static/
+static/

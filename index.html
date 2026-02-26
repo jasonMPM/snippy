@@ -562,9 +562,11 @@ let activeTag = null;
 let activeWsId = null;
 let tagInputTags = [];
 let searchTimer = null;
+let _sessionInvalidated = false;
 
 // ── Token storage ──────────────────────────────────
 function saveTokens(access, refresh) {
+  _sessionInvalidated = false;  // reset so authFetch can protect the new session
   accessToken  = access;
   refreshToken = refresh;
   localStorage.setItem('at', access);
@@ -637,10 +639,14 @@ async function authFetch(url, opts = {}) {
     if (refreshed) {
       resp = await makeReq();
     }
-    if (resp.status === 401) {
-      // Refresh did not help — session is truly dead
+    if (resp.status === 401 && !_sessionInvalidated) {
+      // Refresh did not help — session is truly dead.
+      // Use the flag to ensure concurrent failing requests only trigger ONE logout,
+      // preventing the modal from being called repeatedly (the login-loop bug).
+      _sessionInvalidated = true;
       clearTokens();
-      showAuthModal();
+      currentUser = null;
+      onLoggedOut();
     }
   }
 

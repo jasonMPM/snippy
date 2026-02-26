@@ -21,7 +21,7 @@ import time
 import io
 import struct
 import zlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, redirect, Response
 
@@ -197,8 +197,8 @@ def make_access_token(user_id: int, is_admin: bool) -> str:
         'sub':      user_id,
         'admin':    is_admin,
         'type':     'access',
-        'exp':      datetime.utcnow() + timedelta(seconds=JWT_ACCESS_EXPIRY),
-        'iat':      datetime.utcnow(),
+        'exp':      datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=JWT_ACCESS_EXPIRY),
+        'iat':      datetime.now(timezone.utc).replace(tzinfo=None),
     }
     return pyjwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
@@ -206,7 +206,7 @@ def make_refresh_token_pair(user_id: int) -> tuple:
     """Returns (raw_token, token_hash, expires_at_iso)"""
     raw     = secrets.token_urlsafe(48)
     h       = hashlib.sha256(raw.encode()).hexdigest()
-    expires = datetime.utcnow() + timedelta(seconds=JWT_REFRESH_EXPIRY)
+    expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=JWT_REFRESH_EXPIRY)
     return raw, h, expires.isoformat()
 
 def decode_access_token(token: str) -> dict | None:
@@ -262,7 +262,7 @@ def resolve_user():
             if not key_row:
                 return None
             conn.execute('UPDATE api_keys SET last_used = ? WHERE id = ?',
-                         (datetime.utcnow().isoformat(), key_row['id']))
+                         (datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), key_row['id']))
             return conn.execute(
                 'SELECT * FROM users WHERE id = ? AND is_active = 1', (key_row['user_id'],)
             ).fetchone()
@@ -463,7 +463,7 @@ def register():
                 return jsonify({'error': 'Invite token required'}), 403
             invite = conn.execute(
                 'SELECT * FROM invites WHERE token=? AND used_by IS NULL AND expires_at > ?',
-                (invite_token, datetime.utcnow().isoformat())
+                (invite_token, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
             ).fetchone()
             if not invite:
                 return jsonify({'error': 'Invalid or expired invite token'}), 403
@@ -475,14 +475,14 @@ def register():
         conn.execute(
             'INSERT INTO users (email, display_name, pw_hash, is_admin, created_at) VALUES (?,?,?,?,?)',
             (email, display_name or email.split('@')[0], pw_hash,
-             1 if is_first else 0, datetime.utcnow().isoformat())
+             1 if is_first else 0, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
         user_id = conn.execute('SELECT id FROM users WHERE email=?', (email,)).fetchone()['id']
 
         if not is_first:
             conn.execute(
                 'UPDATE invites SET used_by=?, used_at=? WHERE token=?',
-                (user_id, datetime.utcnow().isoformat(), invite_token)
+                (user_id, datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), invite_token)
             )
 
         user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
@@ -492,7 +492,7 @@ def register():
     with get_db() as conn:
         conn.execute(
             'INSERT INTO refresh_tokens (user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)',
-            (user['id'], h, exp, datetime.utcnow().isoformat())
+            (user['id'], h, exp, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
 
     return jsonify({
@@ -521,7 +521,7 @@ def login():
     with get_db() as conn:
         conn.execute(
             'INSERT INTO refresh_tokens (user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)',
-            (user['id'], h, exp, datetime.utcnow().isoformat())
+            (user['id'], h, exp, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
 
     return jsonify({
@@ -542,7 +542,7 @@ def refresh_token():
     with get_db() as conn:
         row = conn.execute(
             'SELECT * FROM refresh_tokens WHERE token_hash=? AND expires_at > ?',
-            (h, datetime.utcnow().isoformat())
+            (h, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         ).fetchone()
         if not row:
             return jsonify({'error': 'Invalid or expired refresh token'}), 401
@@ -558,14 +558,14 @@ def refresh_token():
         # endpoints at once) from each triggering a rotation that invalidates
         # the others, which would cause a spurious logout.
         expires_at  = datetime.fromisoformat(row['expires_at'])
-        rotate      = expires_at - datetime.utcnow() < timedelta(hours=24)
+        rotate      = expires_at - datetime.now(timezone.utc).replace(tzinfo=None) < timedelta(hours=24)
 
         if rotate:
             conn.execute('DELETE FROM refresh_tokens WHERE token_hash=?', (h,))
             new_raw, new_h, new_exp = make_refresh_token_pair(user['id'])
             conn.execute(
                 'INSERT INTO refresh_tokens (user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)',
-                (user['id'], new_h, new_exp, datetime.utcnow().isoformat())
+                (user['id'], new_h, new_exp, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
             )
         else:
             new_raw = raw  # Return the same refresh token — it's still valid
@@ -621,7 +621,7 @@ def create_key(current_user):
     with get_db() as conn:
         conn.execute(
             'INSERT INTO api_keys (user_id,key_hash,key_prefix,label,created_at) VALUES (?,?,?,?,?)',
-            (current_user['id'], h, prefix, label, datetime.utcnow().isoformat())
+            (current_user['id'], h, prefix, label, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
         key_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
     return jsonify({'id': key_id, 'key': raw, 'prefix': prefix, 'label': label}), 201
@@ -646,11 +646,11 @@ def delete_key(current_user, key_id):
 @admin_required
 def create_invite(current_user):
     token      = secrets.token_urlsafe(24)
-    expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat()
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)).isoformat()
     with get_db() as conn:
         conn.execute(
             'INSERT INTO invites (token,created_by,created_at,expires_at) VALUES (?,?,?,?)',
-            (token, current_user['id'], datetime.utcnow().isoformat(), expires_at)
+            (token, current_user['id'], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), expires_at)
         )
     invite_url = f"{BASE_URL}/register?invite={token}"
     return jsonify({'token': token, 'invite_url': invite_url, 'expires_at': expires_at}), 201
@@ -756,12 +756,12 @@ def create_workspace(current_user):
 
         conn.execute(
             'INSERT INTO workspaces (name,slug,owner_id,created_at) VALUES (?,?,?,?)',
-            (name, slug, current_user['id'], datetime.utcnow().isoformat())
+            (name, slug, current_user['id'], datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
         ws_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.execute(
             'INSERT INTO workspace_members (workspace_id,user_id,role,joined_at) VALUES (?,?,?,?)',
-            (ws_id, current_user['id'], 'owner', datetime.utcnow().isoformat())
+            (ws_id, current_user['id'], 'owner', datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
         ws = conn.execute('SELECT * FROM workspaces WHERE id=?', (ws_id,)).fetchone()
     return jsonify(dict(ws)), 201
@@ -813,7 +813,7 @@ def add_workspace_member(current_user, ws_id):
             return jsonify({'error': 'Already a member'}), 409
         conn.execute(
             'INSERT INTO workspace_members (workspace_id,user_id,role,joined_at) VALUES (?,?,?,?)',
-            (ws_id, target['id'], role, datetime.utcnow().isoformat())
+            (ws_id, target['id'], role, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
     return jsonify({'success': True}), 201
 
@@ -864,7 +864,7 @@ def shorten(current_user):
         conn.execute(
             'INSERT INTO links (code,long_url,title,created_at,expires_at,owner_id,workspace_id) '
             'VALUES (?,?,?,?,?,?,?)',
-            (code, long_url, title or None, datetime.utcnow().isoformat(),
+            (code, long_url, title or None, datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
              expires_at or None, owner_id, workspace_id)
         )
         link_id = conn.execute('SELECT id FROM links WHERE code=?', (code,)).fetchone()['id']
@@ -1000,7 +1000,7 @@ def link_analytics(current_user, code):
             return jsonify({'error': 'Not found'}), 404
 
         link_id = link['id']
-        since   = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        since   = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).isoformat()
 
         daily_rows = conn.execute("""
             SELECT substr(clicked_at,1,10) as day, COUNT(*) as count
@@ -1009,7 +1009,7 @@ def link_analytics(current_user, code):
         """, (link_id, since)).fetchall()
         daily_map = {r['day']: r['count'] for r in daily_rows}
         daily = [
-            {'date': (datetime.utcnow()-timedelta(days=days-1-i)).strftime('%Y-%m-%d'), 'clicks': 0}
+            {'date': (datetime.now(timezone.utc).replace(tzinfo=None)-timedelta(days=days-1-i)).strftime('%Y-%m-%d'), 'clicks': 0}
             for i in range(days)
         ]
         for d in daily: d['clicks'] = daily_map.get(d['date'], 0)
@@ -1071,7 +1071,7 @@ def stats(current_user):
     with get_db() as conn:
         total_links  = conn.execute(f'SELECT COUNT(*) FROM links l WHERE l.is_active=1{owner_filter}', params).fetchone()[0]
         total_clicks = conn.execute(f'SELECT COALESCE(SUM(l.clicks),0) FROM links l WHERE l.is_active=1{owner_filter}', params).fetchone()[0]
-        since_7d     = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        since_7d     = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).isoformat()
         clicks_7d    = conn.execute(
             f'SELECT COUNT(*) FROM clicks c JOIN links l ON c.link_id=l.id WHERE c.clicked_at>=? AND l.is_active=1{owner_filter}',
             [since_7d] + params
@@ -1131,11 +1131,11 @@ def redirect_link(code):
         link = conn.execute('SELECT * FROM links WHERE code=? AND is_active=1', (code,)).fetchone()
         if not link:
             return redirect('/?error=not_found')
-        if link['expires_at'] and link['expires_at'] < datetime.utcnow().isoformat():
+        if link['expires_at'] and link['expires_at'] < datetime.now(timezone.utc).replace(tzinfo=None).isoformat():
             return redirect('/?error=expired')
         conn.execute(
             'INSERT INTO clicks (link_id,clicked_at,referrer,user_agent) VALUES (?,?,?,?)',
-            (link['id'], datetime.utcnow().isoformat(),
+            (link['id'], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
              request.referrer, request.headers.get('User-Agent','')[:500])
         )
         conn.execute('UPDATE links SET clicks=clicks+1 WHERE id=?', (link['id'],))
@@ -1152,7 +1152,7 @@ def frontend(path):
     # Only serve index for non-API, non-code paths
     if path.startswith('api/') or path.startswith('static/'):
         return 'Not found', 404
-    with open(os.path.join(os.path.dirname(__file__), 'templates', 'index.html')) as f:
+    with open(os.path.join(os.path.dirname(__file__), 'index.html')) as f:
         return f.read()
 
 
