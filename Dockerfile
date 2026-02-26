@@ -41,8 +41,7 @@ COPY --from=builder /install /usr/local
 
 # Copy application files
 COPY --chown=sniplink:sniplink app.py .
-COPY --chown=sniplink:sniplink templates/ ./templates/
-COPY --chown=sniplink:sniplink static/ ./static/
+COPY --chown=sniplink:sniplink index.html .
 
 # Data volume — SQLite DB lives here
 # Map to host path in Unraid: /mnt/user/appdata/sniplink → /app/data
@@ -64,7 +63,7 @@ ENV BASE_URL=https://to.alwisp.com \
 
 # Start with Gunicorn
 CMD ["python3", "-m", "gunicorn", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--bind", "0.0.0.0:5000", \
      "--timeout", "60", \
      "--access-logfile", "-", \
