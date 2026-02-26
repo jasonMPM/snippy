@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>to.ALWISP — URL Shortener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── RESET & BASE ─────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0a0f;
+    --surface:  #111118;
+    --surface2: #181824;
+    --border:   rgba(255,255,255,0.07);
+    --accent:   #00e5a0;
+    --accent2:  #ff5e62;
+    --text:     #e8e8f0;
+    --muted:    #6b6b80;
+    --glow:     rgba(0,229,160,0.15);
+    --radius:   12px;
+    --font-head: 'Orbitron', sans-serif;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-body: 'Barlow', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── BACKGROUND MESH ─────────────────────── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% -10%, rgba(0,229,160,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 80%, rgba(255,94,98,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 50% 50%, rgba(90,60,200,0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ──────────────────────────────── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; height: 64px;
+    background: rgba(10,10,15,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: var(--font-head);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 0px;
+    text-decoration: none; color: var(--text);
+    text-transform: lowercase;
+  }
+
+  .logo-to { color: var(--text); }
+  .logo-dot-text { color: var(--accent); text-shadow: 0 0 12px var(--accent); }
+  .logo-alwisp { color: var(--text); text-transform: uppercase; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.8); }
+  }
+
+  nav { display: flex; gap: 4px; }
+
+  nav button {
+    background: transparent; border: none;
+    color: var(--muted); cursor: pointer;
+    font-family: var(--font-body); font-size: 14px;
+    padding: 6px 16px; border-radius: 8px;
+    transition: all 0.2s;
+  }
+  nav button:hover { color: var(--text); background: var(--surface2); }
+  nav button.active { color: var(--accent); background: rgba(0,229,160,0.08); }
+
+  /* ── MAIN LAYOUT ─────────────────────────── */
+  main { position: relative; z-index: 1; }
+
+  .view { display: none; padding: 40px; max-width: 960px; margin: 0 auto; }
+  .view.active { display: block; animation: fadeIn 0.3s ease; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+
+  /* ── HERO ────────────────────────────────── */
+  .hero {
+    text-align: center;
+    padding: 60px 20px 40px;
+  }
+
+  .hero h1 {
+    font-family: var(--font-head);
+    font-size: clamp(42px, 8vw, 88px);
+    font-weight: 900;
+    line-height: 1.0;
+    letter-spacing: 0.06em;
+    margin-bottom: 40px;
+    text-transform: lowercase;
+  }
+
+  .hero h1 .hero-to { color: var(--text); }
+  .hero h1 .hero-dot { color: var(--accent); text-shadow: 0 0 20px var(--accent), 0 0 40px rgba(0,229,160,0.4); }
+  .hero h1 .hero-alwisp {
+    color: var(--text);
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+
+  /* ── SHORTEN CARD ────────────────────────── */
+  .shorten-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px;
+    max-width: 720px;
+    margin: 0 auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.4), 0 0 0 1px var(--border);
+  }
+
+  .input-group {
+    display: flex; gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .input-group input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font-mono); font-size: 14px;
+    padding: 14px 18px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .input-group input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,160,0.12);
+  }
+
+  .input-group input::placeholder { color: var(--muted); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000; border: none; cursor: pointer;
+    font-family: var(--font-head); font-weight: 700;
+    font-size: 14px; letter-spacing: 0.02em;
+    padding: 14px 28px; border-radius: var(--radius);
+    transition: all 0.2s; white-space: nowrap;
+    position: relative; overflow: hidden;
+  }
+
+  .btn-primary::after {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background 0.2s;
+  }
+
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,229,160,0.35); }
+  .btn-primary:hover::after { background: rgba(255,255,255,0.1); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .advanced-toggle {
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 16px; user-select: none;
+    transition: color 0.2s; width: fit-content;
+  }
+  .advanced-toggle:hover { color: var(--text); }
+  .advanced-toggle svg { transition: transform 0.2s; }
+  .advanced-toggle.open svg { transform: rotate(90deg); }
+
+  .advanced-fields {
+    display: none; gap: 12px;
+  }
+  .advanced-fields.open {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .field-label {
+    font-size: 12px; font-family: var(--font-mono);
+    color: var(--muted); margin-bottom: 6px; display: block;
+  }
+
+  .field-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-mono); font-size: 13px;
+    padding: 10px 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input::placeholder { color: var(--muted); }
+
+  /* ── RESULT CARD ─────────────────────────── */
+  .result-card {
+    background: linear-gradient(135deg, rgba(0,229,160,0.06), rgba(0,180,216,0.04));
+    border: 1px solid rgba(0,229,160,0.2);
+    border-radius: 16px; padding: 24px;
+    margin-top: 20px; display: none;
+    animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .result-card.visible { display: block; }
+
+  .result-top {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .result-short-url {
+    font-family: var(--font-mono); font-size: 22px; font-weight: 500;
+    color: var(--accent); text-decoration: none; letter-spacing: -0.5px;
+    word-break: break-all;
+  }
+  .result-short-url:hover { text-decoration: underline; }
+
+  .result-original {
+    font-size: 12px; color: var(--muted);
+    font-family: var(--font-mono);
+    margin-top: 4px; word-break: break-all;
+  }
+
+  .result-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .btn-sm {
+    border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text);
+    font-size: 12px; font-family: var(--font-mono);
+    padding: 6px 14px; border-radius: 8px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+  .result-qr {
+    margin-top: 20px; display: flex; align-items: center; gap: 24px;
+    padding-top: 20px; border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .qr-img-wrap {
+    background: #fff; border-radius: 10px;
+    padding: 10px; flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  .qr-img-wrap img { display: block; width: 120px; height: 120px; }
+
+  .qr-info { flex: 1; }
+  .qr-info h4 { font-family: var(--font-head); font-size: 14px; margin-bottom: 6px; }
+  .qr-info p { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  /* ── STATS STRIP ─────────────────────────── */
+  .stats-strip {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 16px; margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    position: relative; overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .stat-value {
+    font-family: var(--font-head); font-size: 36px; font-weight: 800;
+    line-height: 1; margin-bottom: 6px;
+    background: linear-gradient(135deg, var(--text), var(--muted));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+
+  /* ── LINKS TABLE ─────────────────────────── */
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .section-title {
+    font-family: var(--font-head); font-size: 20px; font-weight: 700;
+  }
+
+  .links-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .link-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 16px;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: default;
+  }
+
+  .link-item:hover {
+    border-color: rgba(0,229,160,0.2);
+    transform: translateX(2px);
+  }
+
+  .link-code {
+    font-family: var(--font-head); font-size: 18px; font-weight: 700;
+    color: var(--accent); min-width: 80px;
+  }
+
+  .link-details { flex: 1; overflow: hidden; }
+  .link-original {
+    font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .link-title { font-size: 13px; margin-bottom: 2px; }
+
+  .link-meta {
+    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+  }
+
+  .link-clicks {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--muted); white-space: nowrap;
+  }
+
+  .link-clicks strong { color: var(--text); }
+
+  .btn-icon {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); padding: 6px 10px; border-radius: 8px;
+    cursor: pointer; font-size: 14px; transition: all 0.2s;
+    line-height: 1;
+  }
+  .btn-icon:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── QR GENERATOR VIEW ───────────────────── */
+  .qr-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  @media (max-width: 600px) { .qr-grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+
+  .panel h3 {
+    font-family: var(--font-head); font-size: 16px; font-weight: 700;
+    margin-bottom: 20px;
+  }
+
+  .qr-preview-panel {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 300px;
+  }
+
+  .qr-preview-img {
+    background: #fff; border-radius: 12px; padding: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .qr-preview-img img { display: block; width: 200px; height: 200px; }
+  .qr-placeholder {
+    width: 200px; height: 200px;
+    border: 2px dashed var(--border); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 13px; font-family: var(--font-mono);
+    text-align: center; padding: 20px;
+  }
+
+  .color-row {
+    display: flex; gap: 12px; margin-bottom: 16px;
+  }
+
+  .color-field { flex: 1; }
+  .color-field label { font-size: 12px; color: var(--muted); font-family: var(--font-mono); display: block; margin-bottom: 6px; }
+
+  .color-input-wrap {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px;
+  }
+
+  input[type="color"] {
+    width: 24px; height: 24px; border: none; border-radius: 4px;
+    padding: 0; cursor: pointer; background: none; flex-shrink: 0;
+  }
+
+  .color-hex {
+    font-family: var(--font-mono); font-size: 13px;
+    background: none; border: none; color: var(--text);
+    width: 70px; outline: none;
+  }
+
+  /* ── RANGE INPUT ─────────────────────────── */
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; height: 4px;
+    background: var(--surface2); border-radius: 2px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    background: var(--accent); border-radius: 50%; cursor: pointer;
+  }
+
+  /* ── TOAST ───────────────────────────────── */
+  .toast-container {
+    position: fixed; bottom: 28px; right: 28px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 999;
+  }
+
+  .toast {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 18px;
+    font-size: 13px; font-family: var(--font-mono);
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: toastIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-width: 320px;
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px) scale(0.95); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  .toast.success { border-color: rgba(0,229,160,0.3); }
+  .toast.error   { border-color: rgba(255,94,98,0.3); }
+  .toast-icon { font-size: 16px; }
+
+  /* ── EMPTY STATE ─────────────────────────── */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--muted);
+  }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .empty-state p { font-family: var(--font-mono); font-size: 13px; }
+
+  /* ── LOADING ─────────────────────────────── */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── RESPONSIVE ──────────────────────────── */
+  @media (max-width: 640px) {
+    header { padding: 0 20px; }
+    .view { padding: 24px 16px; }
+    .stats-strip { grid-template-columns: 1fr 1fr; }
+    .input-group { flex-direction: column; }
+    .advanced-fields.open { grid-template-columns: 1fr; }
+    .result-top { flex-direction: column; }
+  }
+
+  .tag {
+    display: inline-block;
+    background: rgba(0,229,160,0.1);
+    color: var(--accent); font-size: 11px;
+    font-family: var(--font-mono); padding: 2px 8px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <a class="logo" href="/">
+    <span class="logo-to">to</span><span class="logo-dot-text">.</span><span class="logo-alwisp">ALWISP</span>
+  </a>
+  <nav>
+    <button class="active" data-view="home">Shorten</button>
+    <button data-view="dashboard">Dashboard</button>
+    <button data-view="qr">QR Codes</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ── HOME VIEW ──────────────────────────── -->
+  <div class="view active" id="view-home">
+    <div class="hero">
+      <h1><span class="hero-to">to</span><span class="hero-dot">.</span><span class="hero-alwisp">ALWISP</span></h1>
+
+      <div class="shorten-card">
+        <!-- URL Input -->
+        <div class="input-group">
+          <input type="url" id="url-input" placeholder="https://your-very-long-url.com/goes/right/here" autocomplete="off" spellcheck="false">
+          <button class="btn-primary" id="shorten-btn">
+            <span id="shorten-label">Snip it →</span>
+          </button>
+        </div>
+
+        <!-- Advanced Options -->
+        <div class="advanced-toggle" id="adv-toggle">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          Advanced options
+        </div>
+
+        <div class="advanced-fields" id="adv-fields">
+          <div>
+            <label class="field-label">CUSTOM CODE</label>
+            <input class="field-input" id="custom-code" placeholder="e.g. my-link" maxlength="20">
+          </div>
+          <div>
+            <label class="field-label">TITLE (optional)</label>
+            <input class="field-input" id="link-title" placeholder="e.g. My Homepage">
+          </div>
+          <div>
+            <label class="field-label">EXPIRY DATE (optional)</label>
+            <input class="field-input" type="date" id="link-expiry">
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div class="result-card" id="result-card">
+          <div class="result-top">
+            <div>
+              <a class="result-short-url" id="result-url" href="#" target="_blank"></a>
+              <div class="result-original" id="result-original"></div>
+            </div>
+            <div class="result-actions">
+              <button class="btn-sm" id="copy-btn">Copy</button>
+              <button class="btn-sm" id="dl-qr-btn">↓ QR</button>
+            </div>
+          </div>
+          <div class="result-qr">
+            <div class="qr-img-wrap">
+              <img id="result-qr-img" src="" alt="QR Code">
+            </div>
+            <div class="qr-info">
+              <h4>QR Code Ready</h4>
+              <p>Your QR code is generated automatically. Download it or customize colors in the QR tab.</p>
+              <button class="btn-sm" id="customize-qr-btn">Customize QR →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD VIEW ────────────────────── -->
+  <div class="view" id="view-dashboard">
+    <div class="stats-strip" id="stats-strip">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-label">TOTAL LINKS</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-clicks">—</div>
+        <div class="stat-label">TOTAL CLICKS</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg">—</div>
+        <div class="stat-label">AVG CLICKS / LINK</div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div class="section-title">Your Links</div>
+      <button class="btn-sm" onclick="loadDashboard()">↻ Refresh</button>
+    </div>
+
+    <div class="links-list" id="links-list">
+      <div class="empty-state">
+        <div class="empty-icon">🔗</div>
+        <p>Loading your links...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QR VIEW ───────────────────────────── -->
+  <div class="view" id="view-qr">
+    <div class="section-head" style="margin-bottom: 28px;">
+      <div>
+        <div class="section-title">QR Code Generator</div>
+        <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Generate and customize QR codes for any URL</div>
+      </div>
+    </div>
+
+    <div class="qr-grid">
+      <!-- Controls -->
+      <div class="panel">
+        <h3>Configure</h3>
+
+        <label class="field-label">URL</label>
+        <input class="field-input" id="qr-url-input" placeholder="https://example.com" style="margin-bottom: 20px;">
+
+        <div class="color-row">
+          <div class="color-field">
+            <label>FOREGROUND</label>
+            <div class="color-input-wrap">
+              <input type="color" id="qr-fg-picker" value="#000000">
+              <input class="color-hex" id="qr-fg-hex" value="000000" maxlength="6">
+            </div>
+          </div>
+          <div class="color-field">
+            <label>BACKGROUND</label>
+            <div class="color-input-wrap">
+              <input type="color" id="qr-bg-picker" value="#ffffff">
+              <input class="color-hex" id="qr-bg-hex" value="ffffff" maxlength="6">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label class="field-label">SIZE: <span id="qr-size-label">300px</span></label>
+          <input type="range" id="qr-size" min="150" max="600" value="300" step="50">
+        </div>
+
+        <button class="btn-primary" id="qr-generate-btn" style="width: 100%;">Generate QR Code</button>
+      </div>
+
+      <!-- Preview -->
+      <div class="panel qr-preview-panel">
+        <h3 style="align-self: flex-start; width: 100%;">Preview</h3>
+        <div id="qr-preview-wrap">
+          <div class="qr-placeholder">Enter a URL and click Generate to preview your QR code</div>
+        </div>
+        <div id="qr-dl-row" style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+          <a class="btn-primary" id="qr-download-link" download="qrcode.png" style="text-decoration: none; display: inline-block; text-align:center;">
+            ↓ Download PNG
+          </a>
+          <div style="font-size: 12px; color: var(--muted); font-family: var(--font-mono);">Right-click image to save</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- TOASTS -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const BASE = window.location.origin;
+
+// ─────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────
+const navBtns = document.querySelectorAll('nav button');
+const views = document.querySelectorAll('.view');
+
+function showView(name) {
+  views.forEach(v => v.classList.remove('active'));
+  navBtns.forEach(b => b.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
+  document.querySelector(`[data-view="${name}"]`).classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+}
+
+navBtns.forEach(btn => {
+  btn.addEventListener('click', () => showView(btn.dataset.view));
+});
+
+// ─────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────
+function toast(msg, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span><span>${msg}</span>`;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ─────────────────────────────────────────────
+// ADVANCED TOGGLE
+// ─────────────────────────────────────────────
+document.getElementById('adv-toggle').addEventListener('click', function() {
+  this.classList.toggle('open');
+  document.getElementById('adv-fields').classList.toggle('open');
+});
+
+// ─────────────────────────────────────────────
+// URL SHORTENER
+// ─────────────────────────────────────────────
+let lastCode = null;
+
+document.getElementById('shorten-btn').addEventListener('click', doShorten);
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doShorten();
+});
+
+async function doShorten() {
+  const url = document.getElementById('url-input').value.trim();
+  const customCode = document.getElementById('custom-code').value.trim();
+  const title = document.getElementById('link-title').value.trim();
+  const expiry = document.getElementById('link-expiry').value;
+
+  if (!url) { toast('Please enter a URL', 'error'); return; }
+
+  const btn = document.getElementById('shorten-btn');
+  const label = document.getElementById('shorten-label');
+  btn.disabled = true;
+  label.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const resp = await fetch(`${BASE}/api/shorten`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, custom_code: customCode, title, expires_at: expiry || null })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) { toast(data.error || 'Something went wrong', 'error'); return; }
+
+    lastCode = data.code;
+    showResult(data);
+    toast('Link shortened!');
+  } catch (e) {
+    toast('Network error — is the server running?', 'error');
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Snip it →';
+  }
+}
+
+function showResult(data) {
+  const card = document.getElementById('result-card');
+  document.getElementById('result-url').href = data.short_url;
+  document.getElementById('result-url').textContent = data.short_url;
+  document.getElementById('result-original').textContent = data.long_url;
+  document.getElementById('result-qr-img').src = data.qr_url + '?t=' + Date.now();
+  card.classList.add('visible');
+
+  document.getElementById('copy-btn').onclick = () => {
+    navigator.clipboard.writeText(data.short_url).then(() => toast('Copied!'));
+  };
+
+  document.getElementById('dl-qr-btn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = data.qr_url;
+    a.download = `qr-${data.code}.png`;
+    a.click();
+  };
+
+  document.getElementById('customize-qr-btn').onclick = () => {
+    document.getElementById('qr-url-input').value = data.short_url;
+    showView('qr');
+  };
+}
+
+// ─────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────
+async function loadDashboard() {
+  // Stats
+  try {
+    const resp = await fetch(`${BASE}/api/stats`);
+    const data = await resp.json();
+    document.getElementById('stat-total').textContent = data.total_links.toLocaleString();
+    document.getElementById('stat-clicks').textContent = data.total_clicks.toLocaleString();
+    const avg = data.total_links > 0 ? (data.total_clicks / data.total_links).toFixed(1) : '0';
+    document.getElementById('stat-avg').textContent = avg;
+  } catch(e) {}
+
+  // Links
+  try {
+    const resp = await fetch(`${BASE}/api/links?per_page=50`);
+    const data = await resp.json();
+    renderLinks(data.links);
+  } catch(e) {
+    document.getElementById('links-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Could not load links</p></div>`;
+  }
+}
+
+function renderLinks(links) {
+  const container = document.getElementById('links-list');
+  if (!links.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔗</div><p>No links yet — go snip something!</p></div>`;
+    return;
+  }
+  container.innerHTML = links.map(l => `
+    <div class="link-item" id="item-${l.code}">
+      <div class="link-code">${l.code}</div>
+      <div class="link-details">
+        ${l.title ? `<div class="link-title">${l.title}</div>` : ''}
+        <div class="link-original">${l.long_url}</div>
+      </div>
+      <div class="link-meta">
+        <div class="link-clicks"><strong>${l.clicks}</strong> clicks</div>
+        <button class="btn-sm" onclick="copyLink('${l.short_url}')">Copy</button>
+        <button class="btn-icon" title="Delete" onclick="deleteLink('${l.code}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function copyLink(url) {
+  navigator.clipboard.writeText(url).then(() => toast('Copied!'));
+}
+
+async function deleteLink(code) {
+  if (!confirm(`Delete /${code}? This cannot be undone.`)) return;
+  await fetch(`${BASE}/api/links/${code}`, { method: 'DELETE' });
+  document.getElementById(`item-${code}`)?.remove();
+  toast('Link deleted');
+}
+
+// ─────────────────────────────────────────────
+// QR GENERATOR
+// ─────────────────────────────────────────────
+const qrFgPicker = document.getElementById('qr-fg-picker');
+const qrBgPicker = document.getElementById('qr-bg-picker');
+const qrFgHex    = document.getElementById('qr-fg-hex');
+const qrBgHex    = document.getElementById('qr-bg-hex');
+const qrSize     = document.getElementById('qr-size');
+
+qrFgPicker.addEventListener('input', () => qrFgHex.value = qrFgPicker.value.replace('#',''));
+qrBgPicker.addEventListener('input', () => qrBgHex.value = qrBgPicker.value.replace('#',''));
+qrFgHex.addEventListener('input', () => { if(qrFgHex.value.length===6) qrFgPicker.value = '#'+qrFgHex.value; });
+qrBgHex.addEventListener('input', () => { if(qrBgHex.value.length===6) qrBgPicker.value = '#'+qrBgHex.value; });
+
+qrSize.addEventListener('input', () => {
+  document.getElementById('qr-size-label').textContent = qrSize.value + 'px';
+});
+
+document.getElementById('qr-generate-btn').addEventListener('click', generateCustomQR);
+
+async function generateCustomQR() {
+  const url = document.getElementById('qr-url-input').value.trim();
+  if (!url) { toast('Please enter a URL', 'error'); return; }
+
+  const fg = qrFgHex.value.replace('#','') || '000000';
+  const bg = qrBgHex.value.replace('#','') || 'ffffff';
+  const size = qrSize.value;
+
+  const qrUrl = `${BASE}/api/qr/custom?url=${encodeURIComponent(url)}&fg=${fg}&bg=${bg}&size=${size}&t=${Date.now()}`;
+
+  const wrap = document.getElementById('qr-preview-wrap');
+  wrap.innerHTML = `<div class="qr-preview-img"><img src="${qrUrl}" width="${Math.min(size,300)}" height="${Math.min(size,300)}" alt="QR Code"></div>`;
+
+  const dlRow = document.getElementById('qr-dl-row');
+  dlRow.style.display = 'flex';
+  document.getElementById('qr-download-link').href = qrUrl;
+  toast('QR code generated!');
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+// Check for error in URL
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('error') === 'not_found') toast('Link not found', 'error');
+if (urlParams.get('error') === 'expired') toast('Link has expired', 'error');
+</script>
+</body>
+</html>

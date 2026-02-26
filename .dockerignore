@@ -1,0 +1,19 @@
+# SnipLink .dockerignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+.env
+.env.*
+*.log
+.git/
+.gitignore
+*.md
+setup.sh
+docker-compose.yml
+.DS_Store
+venv/
+.venv/
+{static/

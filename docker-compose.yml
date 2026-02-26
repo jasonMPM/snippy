@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────
+# SnipLink — docker-compose.yml
+# For local dev or non-Unraid deployments
+# On Unraid: use the Docker tab UI instead
+# ─────────────────────────────────────────────
+
+services:
+  sniplink:
+    build: .
+    # Or use a pre-built image from Docker Hub:
+    # image: yourdockerhubuser/sniplink:latest
+    container_name: sniplink
+    restart: unless-stopped
+
+    ports:
+      - "5000:5000"       # Change left side to use a different host port
+                          # e.g. "80:5000" to serve on port 80
+
+    volumes:
+      - sniplink-data:/app/data   # Persistent SQLite database
+
+    environment:
+      - BASE_URL=http://to.alwisp.com       # ← Your public subdomain
+      - PORT=5000
+      - DEBUG=false
+      - SECRET_KEY=replace-with-a-long-random-string   # ← Change this!
+
+    # Optional: resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/stats')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  sniplink-data:
+    driver: local
