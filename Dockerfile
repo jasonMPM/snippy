@@ -8,7 +8,6 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
@@ -46,27 +45,24 @@ COPY --chown=sniplink:sniplink templates/ ./templates/
 COPY --chown=sniplink:sniplink static/ ./static/
 
 # Data volume — SQLite DB lives here
-# Map this to a persistent path in Unraid: /mnt/user/appdata/sniplink
+# Map to host path in Unraid: /mnt/user/appdata/sniplink → /app/data
 VOLUME ["/app/data"]
 
-# Expose app port
 EXPOSE 5000
 
-# Health check
+# Health check — waits 15s for startup before first check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/stats')" || exit 1
 
-# Switch to non-root user
 USER sniplink
 
-# Environment defaults (override in Unraid container settings)
-ENV BASE_URL=http://localhost:5000 \
+# Non-sensitive defaults only — SECRET_KEY must be passed at runtime
+ENV BASE_URL=https://to.alwisp.com \
     PORT=5000 \
     DEBUG=false \
-    SECRET_KEY=change-me-in-production \
     DB_PATH=/app/data/sniplink.db
 
-# Start with gunicorn
+# Start with Gunicorn
 CMD ["python3", "-m", "gunicorn", \
      "--workers", "2", \
      "--bind", "0.0.0.0:5000", \
