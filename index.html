@@ -335,6 +335,12 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 /* ── INLINE COPY ── */
 .copy-inline { background:none; border:1px solid transparent; cursor:pointer; color:var(--muted); font-size:10px; font-family:var(--font-mono); padding:2px 8px; border-radius:5px; flex-shrink:0; transition:all .15s; letter-spacing:.03em; }
 .copy-inline:hover { border-color:var(--border); color:var(--text); }
+
+/* ── INLINE QR THUMBNAIL (expanded panel) ── */
+.qr-thumb-wrap    { display:flex; gap:14px; align-items:flex-start; margin-bottom:16px; }
+.qr-thumb-img     { background:#fff; border-radius:8px; padding:7px; flex-shrink:0; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+.qr-thumb-img img { display:block; width:80px; height:80px; }
+.qr-thumb-btns    { display:flex; flex-direction:column; gap:6px; justify-content:center; }
 </style>
 </head>
 <body>
@@ -720,10 +726,19 @@ function buildLinkItem(l) {
       </div>
     </div>
     <div class="link-expanded" id="exp-${l.code}">
+      <div class="qr-thumb-wrap">
+        <div class="qr-thumb-img">
+          <img src="${l.qr_url}" alt="QR code for ${l.code}" loading="lazy" width="80" height="80">
+        </div>
+        <div class="qr-thumb-btns">
+          <a class="btn-sm" href="${l.qr_url}" download="qr-${l.code}.png" style="text-decoration:none;text-align:center">↓ Download</a>
+          <button class="btn-sm" onclick="copyQrToClipboard('${l.qr_url}')">⎘ Copy image</button>
+          <button class="btn-sm" onclick="document.getElementById('qr-url-input').value='${l.short_url}';showView('qr')">✦ Customize</button>
+        </div>
+      </div>
       <div class="expanded-actions">
         <button class="btn-sm" onclick="copyToClipboard('${l.short_url}')">Copy link</button>
         ${canEdit?`<button class="btn-sm" onclick="toggleEdit('${l.code}')">✎ Edit</button>`:''}
-        <button class="btn-sm" onclick="window.open('${l.qr_url}')">↓ QR</button>
         ${canEdit?`<button class="btn-sm danger" onclick="deleteLink('${l.code}')">✕ Delete</button>`:''}
       </div>
       ${canEdit?`
@@ -789,6 +804,17 @@ async function deleteLink(code) {
 }
 
 function copyToClipboard(url) { navigator.clipboard.writeText(url); toast('Copied!'); }
+
+async function copyQrToClipboard(qrUrl) {
+  try {
+    const resp = await fetch(qrUrl);
+    const blob = await resp.blob();
+    await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+    toast('QR image copied!');
+  } catch(e) {
+    toast('Copy failed — try right-clicking the image', 'error');
+  }
+}
 
 async function togglePin(code, currentPinned) {
   const newPinned = currentPinned ? 0 : 1;
