@@ -782,6 +782,18 @@ function onLoggedOut() {
       if (resp.ok) { currentUser = await resp.json(); onLoggedIn(); return; }
     } catch(e) {}
   }
+
+  // localStorage may be empty (e.g. after clearTokens on expiry), but a valid
+  // HttpOnly refresh_token cookie may still exist. Try a silent refresh before
+  // giving up and showing the login modal.
+  const refreshed = await doRefresh();
+  if (refreshed) {
+    try {
+      const resp = await authFetch(`${BASE}/api/auth/me`);
+      if (resp.ok) { currentUser = await resp.json(); onLoggedIn(); return; }
+    } catch(e) {}
+  }
+
   showAuthModal();
 })();
 
