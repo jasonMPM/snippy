@@ -50,13 +50,15 @@ VOLUME ["/app/data"]
 EXPOSE 5000
 
 # Health check — waits 15s for startup before first check
+# Uses /api/health (public, no auth required)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/stats')" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" || exit 1
 
 USER sniplink
 
-# Non-sensitive defaults only — SECRET_KEY must be passed at runtime
-ENV BASE_URL=https://to.alwisp.com \
+# Non-sensitive defaults only — SECRET_KEY and ADMIN_PASSWORD must be passed at runtime
+ENV BASE_URL=http://localhost:5000 \
+    APP_NAME=to.ALWISP \
     PORT=5000 \
     DEBUG=false \
     DB_PATH=/app/data/sniplink.db

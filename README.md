@@ -47,8 +47,20 @@ Single-admin: one `ADMIN_PASSWORD` env var protects all write operations. No use
 - [x] Pin / favorites — star any link to float it to the top of the dashboard list
 - [x] One-click copy — inline copy button on every link row, no expand needed
 - [x] Auto-fetch title — URL field blur triggers a server-side title fetch (`og:title` → `<title>`); pre-fills the title field when empty (works in both the Shorten form and the edit form)
+- [x] Inline QR thumbnail — 80px QR preview inside every expanded link row (lazy-loaded)
+- [x] Copy QR to clipboard — one click writes the QR PNG to the clipboard via Clipboard API
+- [x] Customize QR shortcut — jump directly to the QR tab with the short URL pre-filled
 
-### 🔜 Phase 6 — Multi-user (Simplified)
+### ✅ Phase 6 — Deployment Portability (Complete)
+- [x] `APP_NAME` env var — display name applied to header, hero, login modal, and page title at runtime; no rebuild needed
+- [x] Names with a dot (e.g. `go.mysite.io`) are split and styled automatically; plain names work too
+- [x] `BASE_URL` Dockerfile default changed from a specific domain to `http://localhost:5000`
+- [x] `/api/config` public endpoint exposes `app_name` and `base_url` to the frontend
+- [x] Dockerfile healthcheck fixed to use public `/api/health` (was hitting auth-required `/api/stats`)
+- [x] CSV export filename derived from `APP_NAME` slug (e.g. `to-alwisp-export.csv`)
+- [x] All hardcoded domain references removed from `docker-compose.yml` and `Dockerfile`
+
+### 🔜 Phase 7 — Multi-user (Simplified)
 - [ ] Per-user accounts with password (no invites, no workspaces)
 - [ ] Admin creates accounts directly (no self-registration)
 - [ ] Each user sees only their own links
@@ -79,7 +91,8 @@ docker run -d \
   --restart unless-stopped \
   -p 5000:5000 \
   -v sniplink-data:/app/data \
-  -e BASE_URL=https://to.alwisp.com \
+  -e BASE_URL=https://yourdomain.com \
+  -e APP_NAME=to.ALWISP \
   -e SECRET_KEY=your-generated-key-here \
   -e ADMIN_PASSWORD=your-strong-password \
   sniplink:latest
@@ -127,7 +140,8 @@ docker push yourdockerhubusername/sniplink:latest
 
 | Key | Value | Notes |
 |---|---|---|
-| `BASE_URL` | `https://to.alwisp.com` | Your public domain |
+| `BASE_URL` | `https://yourdomain.com` | Your public domain or subdomain |
+| `APP_NAME` | `to.ALWISP` | Display name in the UI (e.g. `go.mysite.io`) |
 | `SECRET_KEY` | *(long random string)* | **Required** |
 | `ADMIN_PASSWORD` | *(your password)* | **Required** |
 | `COOKIE_SECURE` | `false` | Keep `false` when behind a proxy (Cloudflare, NPM). Set `true` only if Flask receives HTTPS directly. |
@@ -151,7 +165,7 @@ docker push yourdockerhubusername/sniplink:latest
 docker inspect --format='{{.State.Health.Status}}' sniplink
 # Should return: healthy
 
-curl https://to.alwisp.com/api/health
+curl https://yourdomain.com/api/health
 # {"status":"ok"}
 ```
 
@@ -217,7 +231,8 @@ All write endpoints require an active session (log in via the web UI first, or P
 
 | Variable | Default | Description |
 |---|---|---|
-| `BASE_URL` | `http://localhost:5000` | Public URL of your instance |
+| `BASE_URL` | `http://localhost:5000` | Public URL of your instance — used in short links and QR codes |
+| `APP_NAME` | `to.ALWISP` | Display name shown in the header, hero, login modal, and page title. Names with a dot (e.g. `go.mysite.io`) are split and styled automatically; names without a dot render as plain text. |
 | `PORT` | `5000` | Port Gunicorn listens on |
 | `DEBUG` | `false` | Flask debug mode (keep false in production) |
 | `SECRET_KEY` | *(none — required)* | Signs session cookies — use a long random string |
@@ -236,7 +251,8 @@ docker build -t sniplink:latest .
 docker stop sniplink && docker rm sniplink
 docker run -d --name sniplink --restart unless-stopped \
   -p 5000:5000 -v sniplink-data:/app/data \
-  -e BASE_URL=https://to.alwisp.com \
+  -e BASE_URL=https://yourdomain.com \
+  -e APP_NAME=to.ALWISP \
   -e SECRET_KEY=your-secret \
   -e ADMIN_PASSWORD=your-password \
   sniplink:latest

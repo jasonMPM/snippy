@@ -1,5 +1,5 @@
 """
-to.ALWISP - URL Shortener & QR Code Generator
+Self-hosted URL shortener & QR code generator.
 Single-admin auth: set ADMIN_PASSWORD env var. No accounts, no JWTs.
 """
 
@@ -29,6 +29,7 @@ if not ADMIN_PASSWORD:
 
 DB_PATH  = os.environ.get('DB_PATH',  '/app/data/sniplink.db')
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000').rstrip('/')
+APP_NAME = os.environ.get('APP_NAME', 'to.ALWISP')
 
 COOKIE_SECURE = os.environ.get('COOKIE_SECURE', 'false').lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -313,6 +314,12 @@ def format_link(row, conn):
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/config')
+def get_config():
+    """Public endpoint — exposes non-sensitive deployment config to the frontend."""
+    return jsonify({'app_name': APP_NAME, 'base_url': BASE_URL})
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -734,7 +741,7 @@ def export_links():
     return Response(
         buf.getvalue().encode('utf-8'),
         mimetype='text/csv',
-        headers={'Content-Disposition': 'attachment; filename="sniplink-export.csv"'}
+        headers={'Content-Disposition': f'attachment; filename="{re.sub(r"[^a-z0-9]+", "-", APP_NAME.lower()).strip("-")}-export.csv"'}
     )
 
 

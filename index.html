@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>to.ALWISP — URL Shortener</title>
+<title>URL Shortener</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
@@ -349,7 +349,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 <div class="modal-overlay" id="auth-modal">
   <div class="modal">
     <div class="modal-logo">
-      <span style="color:var(--text)">to</span><span style="color:var(--accent);text-shadow:0 0 12px var(--accent)">.</span><span style="text-transform:uppercase">ALWISP</span>
+      <span style="color:var(--text)" id="brand-modal-pre">to</span><span style="color:var(--accent);text-shadow:0 0 12px var(--accent)" id="brand-modal-dot">.</span><span style="text-transform:uppercase" id="brand-modal-suf">ALWISP</span>
     </div>
     <div class="modal-form active" id="form-login">
       <label>PASSWORD<input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"></label>
@@ -362,7 +362,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 <!-- ── HEADER ── -->
 <header>
   <a class="logo" href="/">
-    <span class="logo-to">to</span><span class="logo-dot-text">.</span><span class="logo-alwisp">ALWISP</span>
+    <span class="logo-to" id="brand-logo-pre">to</span><span class="logo-dot-text" id="brand-logo-dot">.</span><span class="logo-alwisp" id="brand-logo-suf">ALWISP</span>
   </a>
   <nav>
     <button class="active" data-view="home">Shorten</button>
@@ -379,7 +379,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 <!-- ── HOME ── -->
 <div class="view active" id="view-home">
   <div class="hero">
-    <h1><span class="hero-to">to</span><span class="hero-dot">.</span><span class="hero-alwisp">ALWISP</span></h1>
+    <h1><span class="hero-to" id="brand-hero-pre">to</span><span class="hero-dot" id="brand-hero-dot">.</span><span class="hero-alwisp" id="brand-hero-suf">ALWISP</span></h1>
     <div class="shorten-card">
       <div class="input-group">
         <input type="url" id="url-input" placeholder="https://your-long-url.com/goes/here" autocomplete="off" spellcheck="false">
@@ -620,11 +620,41 @@ function onLoggedOut() {
   showAuthModal();
 }
 
+// ── Branding ───────────────────────────────────────
+async function applyConfig() {
+  try {
+    const resp = await fetch(`${BASE}/api/config`);
+    if (!resp.ok) return;
+    const { app_name: name } = await resp.json();
+    if (!name) return;
+
+    // Split on the first dot so "to.ALWISP" → pre="to", suf="ALWISP"
+    // Names without a dot render in full with dot+suffix hidden.
+    const dotIdx = name.indexOf('.');
+    const pre = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+    const suf = dotIdx > 0 ? name.slice(dotIdx + 1).toUpperCase() : '';
+    const hasDot = suf !== '';
+
+    document.title = `${name} — URL Shortener`;
+
+    ['logo', 'hero', 'modal'].forEach(ctx => {
+      const preEl = document.getElementById(`brand-${ctx}-pre`);
+      const dotEl = document.getElementById(`brand-${ctx}-dot`);
+      const sufEl = document.getElementById(`brand-${ctx}-suf`);
+      if (preEl) preEl.textContent = pre;
+      if (dotEl) dotEl.style.display = hasDot ? '' : 'none';
+      if (sufEl) { sufEl.textContent = suf; sufEl.style.display = hasDot ? '' : 'none'; }
+    });
+  } catch(e) {}
+}
+
 // ── Init ───────────────────────────────────────────
 (async function init() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('error') === 'not_found') toast('Link not found', 'error');
   if (params.get('error') === 'expired')   toast('Link has expired', 'error');
+
+  applyConfig(); // fire-and-forget — fills in app name from env
 
   try {
     const resp = await fetch(`${BASE}/api/auth/me`, {credentials:'include'});
