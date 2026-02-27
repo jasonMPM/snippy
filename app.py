@@ -23,7 +23,7 @@ import struct
 import zlib
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from flask import Flask, request, jsonify, redirect, Response
+from flask import Flask, request, jsonify, redirect, Response, make_response
 
 try:
     import jwt as pyjwt
@@ -39,6 +39,8 @@ DB_PATH  = os.environ.get('DB_PATH',  '/app/data/sniplink.db')
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000').rstrip('/')
 JWT_ACCESS_EXPIRY  = int(os.environ.get('JWT_ACCESS_EXPIRY',  60 * 60 * 8))        # 8 hours
 JWT_REFRESH_EXPIRY = int(os.environ.get('JWT_REFRESH_EXPIRY', 60 * 60 * 24 * 30))  # 30 days
+# Secure cookies require HTTPS; set DEBUG=true to disable for local HTTP dev
+COOKIE_SECURE = os.environ.get('DEBUG', 'false').lower() != 'true'
 
 
 # ─────────────────────────────────────────────
@@ -219,19 +221,48 @@ def decode_access_token(token: str) -> dict | None:
 
 
 # ─────────────────────────────────────────────
+# Cookie helpers
+# ─────────────────────────────────────────────
+
+def set_auth_cookies(resp, access_tok: str, refresh_tok: str):
+    """Attach HttpOnly auth cookies to a response.
+    Cookies bypass Nginx Proxy Manager header-stripping and are sent
+    automatically by the browser on every same-origin request.
+    """
+    resp.set_cookie('access_token',  access_tok,
+                    httponly=True, secure=COOKIE_SECURE, samesite='Lax',
+                    max_age=JWT_ACCESS_EXPIRY,  path='/')
+    resp.set_cookie('refresh_token', refresh_tok,
+                    httponly=True, secure=COOKIE_SECURE, samesite='Lax',
+                    max_age=JWT_REFRESH_EXPIRY, path='/')
+    return resp
+
+def clear_auth_cookies(resp):
+    resp.set_cookie('access_token',  '', expires=0, path='/')
+    resp.set_cookie('refresh_token', '', expires=0, path='/')
+    return resp
+
+
+# ─────────────────────────────────────────────
 # Auth decorators
 # ─────────────────────────────────────────────
 
 def get_token_from_request():
     """Extract Bearer token or API key from request.
-    Reads X-Auth-Token first (bypasses Nginx Proxy Manager header stripping),
-    then falls back to Authorization: Bearer for direct/API access.
+    Priority: cookie (browser clients, survives NPM proxy) →
+              X-Auth-Token header (legacy / API clients) →
+              Authorization: Bearer → X-API-Key.
     """
-    # Primary: custom header that NPM won't strip
+    # Primary: HttpOnly cookie — the browser sends it automatically and
+    # Nginx Proxy Manager does NOT strip cookies (unlike custom headers).
+    cookie_token = request.cookies.get('access_token', '').strip()
+    if cookie_token:
+        return ('bearer', cookie_token)
+    # Fallback: custom header kept for direct API / non-browser clients
     token = request.headers.get('X-Auth-Token', '').strip()
     if token:
         return ('bearer', token)
-    # Fallback: standard Authorization header
+    # Standard Authorization header
     auth = request.headers.get('Authorization', '')
     if auth.startswith('Bearer '):
         return ('bearer', auth[7:])
@@ -495,11 +526,13 @@ def register():
             (user['id'], h, exp, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
 
-    return jsonify({
+    resp = make_response(jsonify({
         'access_token':  access,
         'refresh_token': raw,
         'user':          format_user(user),
-    }), 201
+    }), 201)
+    set_auth_cookies(resp, access, raw)
+    return resp
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -524,17 +557,20 @@ def login():
             (user['id'], h, exp, datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
         )
 
-    return jsonify({
+    resp = make_response(jsonify({
         'access_token':  access,
         'refresh_token': raw,
         'user':          format_user(user),
-    })
+    }))
+    set_auth_cookies(resp, access, raw)
+    return resp
 
 
 @app.route('/api/auth/refresh', methods=['POST'])
 def refresh_token():
     data = request.get_json(silent=True) or {}
-    raw  = (data.get('refresh_token') or '').strip()
+    # Accept refresh token from JSON body (frontend) OR HttpOnly cookie (fallback)
+    raw  = (data.get('refresh_token') or request.cookies.get('refresh_token') or '').strip()
     if not raw:
         return jsonify({'error': 'Refresh token required'}), 400
 
@@ -570,22 +606,28 @@ def refresh_token():
         else:
             new_raw = raw  # Return the same refresh token — it's still valid
 
-    return jsonify({
-        'access_token':  make_access_token(user['id'], bool(user['is_admin'])),
+    new_access = make_access_token(user['id'], bool(user['is_admin']))
+    resp = make_response(jsonify({
+        'access_token':  new_access,
         'refresh_token': new_raw,
-    })
+    }))
+    set_auth_cookies(resp, new_access, new_raw)
+    return resp
 
 
 @app.route('/api/auth/logout', methods=['POST'])
 @login_required
 def logout(current_user):
     data = request.get_json(silent=True) or {}
-    raw  = data.get('refresh_token', '')
+    # Accept refresh token from body OR cookie
+    raw  = data.get('refresh_token', '') or request.cookies.get('refresh_token', '')
     if raw:
         h = hashlib.sha256(raw.encode()).hexdigest()
         with get_db() as conn:
             conn.execute('DELETE FROM refresh_tokens WHERE token_hash=?', (h,))
-    return jsonify({'success': True})
+    resp = make_response(jsonify({'success': True}))
+    clear_auth_cookies(resp)
+    return resp
 
 
 @app.route('/api/auth/me', methods=['GET'])
