@@ -39,8 +39,10 @@ DB_PATH  = os.environ.get('DB_PATH',  '/app/data/sniplink.db')
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000').rstrip('/')
 JWT_ACCESS_EXPIRY  = int(os.environ.get('JWT_ACCESS_EXPIRY',  60 * 60 * 8))        # 8 hours
 JWT_REFRESH_EXPIRY = int(os.environ.get('JWT_REFRESH_EXPIRY', 60 * 60 * 24 * 30))  # 30 days
-# Secure cookies require HTTPS; set DEBUG=true to disable for local HTTP dev
-COOKIE_SECURE = os.environ.get('DEBUG', 'false').lower() != 'true'
+# COOKIE_SECURE: set to 'true' only if your site is served over HTTPS end-to-end.
+# Leave as 'false' (default) for HTTP-only setups or Unraid LAN access.
+# Secure cookies are NOT sent by browsers over plain HTTP, which causes 401s.
+COOKIE_SECURE = os.environ.get('COOKIE_SECURE', 'false').lower() == 'true'
 
 
 # ─────────────────────────────────────────────
@@ -1159,6 +1161,33 @@ def qr_custom():
     size   = min(int(request.args.get('size', 300)), 1000)
     png = generate_qr_png(url, size=size, fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex))
     return Response(png, mimetype='image/png')
+
+
+# ─────────────────────────────────────────────
+# Debug (only available when DEBUG=true)
+# ─────────────────────────────────────────────
+
+@app.route('/api/debug-auth')
+def debug_auth():
+    """Shows exactly what auth info Flask received — enable with DEBUG=true.
+    Visit this endpoint from the browser after logging in to diagnose 401s.
+    """
+    if not app.debug:
+        return jsonify({'error': 'Only available when DEBUG=true'}), 403
+    kind, token = get_token_from_request()
+    payload = None
+    if token and kind == 'bearer':
+        payload = decode_access_token(token)
+    return jsonify({
+        'cookies':            dict(request.cookies),
+        'x_auth_token_hdr':  request.headers.get('X-Auth-Token', '(not present)'),
+        'auth_hdr':          request.headers.get('Authorization', '(not present)'),
+        'token_source':      kind,
+        'token_present':     bool(token),
+        'token_valid':       bool(payload),
+        'token_payload':     payload,
+        'cookie_secure_cfg': COOKIE_SECURE,
+    })
 
 
 # ─────────────────────────────────────────────

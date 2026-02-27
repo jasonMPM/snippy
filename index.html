@@ -591,6 +591,7 @@ async function doRefresh() {
     try {
       const r = await fetch(`${BASE}/api/auth/refresh`, {
         method: 'POST',
+        credentials: 'include',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({refresh_token: refreshToken})
       });
@@ -620,11 +621,10 @@ async function authFetch(url, opts = {}) {
 
   const makeReq = () => fetch(url, {
     ...opts,
+    credentials: 'include',   // always send cookies (auth cookie survives NPM proxy)
     headers: {
       'Content-Type': 'application/json',
       ...(opts.headers || {}),
-      // Use X-Auth-Token instead of Authorization — Nginx Proxy Manager
-      // strips Authorization headers by default, causing all API calls to 401.
       ...(accessToken ? {'X-Auth-Token': accessToken} : {}),
     },
   });
@@ -695,7 +695,7 @@ async function doLogin() {
   errEl.classList.remove('show');
   try {
     const resp = await fetch(`${BASE}/api/auth/login`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({email, password})
     });
     const d = await resp.json();
@@ -715,7 +715,7 @@ async function doRegister() {
   errEl.classList.remove('show');
   try {
     const resp = await fetch(`${BASE}/api/auth/register`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({email, password, display_name, invite_token: invite})
     });
     const d = await resp.json();
