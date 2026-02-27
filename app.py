@@ -157,12 +157,26 @@ def generate_qr_png(data: str, size: int = 300, fg=(0,0,0), bg=(255,255,255),
         pil_img = pil_img.resize((size, size), Image.LANCZOS)
 
         if logo_bytes:
+            from PIL import ImageDraw
             logo = Image.open(io.BytesIO(logo_bytes)).convert('RGBA')
             logo_size = size // 4
             logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
-            pos = ((size - logo_size) // 2, (size - logo_size) // 2)
+
+            # Erase a square tile at the centre to the background colour so
+            # QR modules appear to wrap around the logo rather than being
+            # covered by a floating patch.  A 2–3 px gutter keeps the nearest
+            # module from butting right up against the logo edge.
+            pad  = max(2, size // 100)
+            zone = logo_size + pad * 2
+            cx   = (size - zone) // 2
+            cy   = (size - zone) // 2
+
             pil_img = pil_img.convert('RGBA')
-            pil_img.paste(logo, pos, logo)
+            draw = ImageDraw.Draw(pil_img)
+            draw.rectangle([cx, cy, cx + zone - 1, cy + zone - 1], fill=(*bg, 255))
+
+            # Paste logo centred inside the cleared tile
+            pil_img.paste(logo, (cx + pad, cy + pad), logo)
             pil_img = pil_img.convert('RGB')
 
         buf = io.BytesIO()
