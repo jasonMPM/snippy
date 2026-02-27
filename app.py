@@ -5,6 +5,8 @@ Single-admin auth: set ADMIN_PASSWORD env var. No accounts, no JWTs.
 
 import os
 import re
+import csv
+import base64
 import sqlite3
 import hashlib
 import hmac
@@ -104,18 +106,72 @@ def login_required(f):
 # QR Generator
 # ─────────────────────────────────────────────
 
-def generate_qr_png(data: str, size: int = 300, fg=(0,0,0), bg=(255,255,255)) -> bytes:
+def generate_qr_png(data: str, size: int = 300, fg=(0,0,0), bg=(255,255,255),
+                    style: str = 'square', logo_bytes: bytes = None) -> bytes:
+    """Generate QR PNG. Supports dot styles and logo overlay when qrcode[pil] is installed."""
     try:
         import qrcode as qrc
-        qr = qrc.QRCode(border=2)
+        from PIL import Image
+
+        ec = qrc.constants.ERROR_CORRECT_H if logo_bytes else qrc.constants.ERROR_CORRECT_M
+        qr = qrc.QRCode(error_correction=ec, border=2)
         qr.add_data(data)
         qr.make(fit=True)
-        img = qr.make_image(fill_color=fg, back_color=bg)
+
+        pil_img = None
+        if style and style != 'square':
+            try:
+                from qrcode.image.styledpil import StyledPilImage
+                from qrcode.image.styles.moduledrawers.pil import (
+                    RoundedModuleDrawer, CircleModuleDrawer,
+                    VerticalBarsDrawer, HorizontalBarsDrawer,
+                )
+                _drawers = {
+                    'rounded':    RoundedModuleDrawer,
+                    'dots':       CircleModuleDrawer,
+                    'vertical':   VerticalBarsDrawer,
+                    'horizontal': HorizontalBarsDrawer,
+                }
+                drawer_cls = _drawers.get(style)
+                if drawer_cls:
+                    qr_obj = qr.make_image(
+                        image_factory=StyledPilImage,
+                        module_drawer=drawer_cls(),
+                        fill_color=fg,
+                        back_color=bg,
+                    )
+                    tmp = io.BytesIO()
+                    qr_obj.save(tmp, 'PNG')
+                    tmp.seek(0)
+                    pil_img = Image.open(tmp).convert('RGB')
+            except (ImportError, Exception):
+                pass
+
+        if pil_img is None:
+            qr_obj = qr.make_image(fill_color=fg, back_color=bg)
+            tmp = io.BytesIO()
+            qr_obj.save(tmp, 'PNG')
+            tmp.seek(0)
+            pil_img = Image.open(tmp).convert('RGB')
+
+        pil_img = pil_img.resize((size, size), Image.LANCZOS)
+
+        if logo_bytes:
+            logo = Image.open(io.BytesIO(logo_bytes)).convert('RGBA')
+            logo_size = size // 4
+            logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
+            pos = ((size - logo_size) // 2, (size - logo_size) // 2)
+            pil_img = pil_img.convert('RGBA')
+            pil_img.paste(logo, pos, logo)
+            pil_img = pil_img.convert('RGB')
+
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        pil_img.save(buf, 'PNG')
         return buf.getvalue()
     except ImportError:
         pass
+
+    # Fallback pure-python PNG renderer (no styles/logo support)
     module_count = 21
     cell = max(4, size // module_count)
     img_size = cell * module_count
@@ -238,7 +294,7 @@ def health():
     return jsonify({'status': 'ok'})
 
 
-
+@app.route('/api/auth/login', methods=['POST'])
 def login():
     data     = request.get_json(silent=True) or {}
     password = data.get('password') or ''
@@ -502,16 +558,17 @@ def qr_code(code):
     fg_hex = request.args.get('fg', '000000')
     bg_hex = request.args.get('bg', 'ffffff')
     size   = min(int(request.args.get('size', 300)), 1000)
+    style  = request.args.get('style', 'square')
     with get_db() as conn:
         link = conn.execute('SELECT 1 FROM links WHERE code=? AND is_active=1', (code,)).fetchone()
     if not link:
         return jsonify({'error': 'Not found'}), 404
     png = generate_qr_png(f"{BASE_URL}/{code}", size=size,
-                          fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex))
+                          fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex), style=style)
     return Response(png, mimetype='image/png', headers={'Cache-Control': 'public, max-age=3600'})
 
 
-@app.route('/api/qr/custom')
+@app.route('/api/qr/custom', methods=['GET'])
 def qr_custom():
     url = request.args.get('url', '').strip()
     if not url or not validate_url(url):
@@ -519,8 +576,155 @@ def qr_custom():
     fg_hex = request.args.get('fg', '000000')
     bg_hex = request.args.get('bg', 'ffffff')
     size   = min(int(request.args.get('size', 300)), 1000)
-    png = generate_qr_png(url, size=size, fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex))
+    style  = request.args.get('style', 'square')
+    png = generate_qr_png(url, size=size, fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex), style=style)
     return Response(png, mimetype='image/png')
+
+
+@app.route('/api/qr/custom', methods=['POST'])
+def qr_custom_post():
+    data = request.get_json(silent=True) or {}
+    url  = (data.get('url') or '').strip()
+    if not url or not validate_url(url):
+        return jsonify({'error': 'Valid URL required'}), 400
+    fg_hex = (data.get('fg') or '000000').lstrip('#')
+    bg_hex = (data.get('bg') or 'ffffff').lstrip('#')
+    size   = min(int(data.get('size', 300)), 1000)
+    style  = data.get('style', 'square')
+    logo_bytes = None
+    logo_b64   = data.get('logo', '')
+    if logo_b64:
+        try:
+            logo_bytes = base64.b64decode(logo_b64)
+        except Exception:
+            return jsonify({'error': 'Invalid logo data'}), 400
+    png = generate_qr_png(url, size=size, fg=hex_to_rgb(fg_hex), bg=hex_to_rgb(bg_hex),
+                          style=style, logo_bytes=logo_bytes)
+    return Response(png, mimetype='image/png')
+
+
+# ─────────────────────────────────────────────
+# Bulk Operations
+# ─────────────────────────────────────────────
+
+@app.route('/api/links/bulk', methods=['POST'])
+@login_required
+def bulk_links():
+    data   = request.get_json(silent=True) or {}
+    action = data.get('action')
+    codes  = data.get('codes', [])
+    if not codes:
+        return jsonify({'error': 'No codes provided'}), 400
+    if action not in ('delete', 'tag', 'expire'):
+        return jsonify({'error': 'Invalid action'}), 400
+
+    placeholders = ','.join('?' * len(codes))
+    with get_db() as conn:
+        if action == 'delete':
+            conn.execute(f'UPDATE links SET is_active=0 WHERE code IN ({placeholders})', codes)
+            return jsonify({'deleted': len(codes)})
+
+        elif action == 'tag':
+            tags = data.get('tags', [])
+            for code in codes:
+                link = conn.execute('SELECT id FROM links WHERE code=? AND is_active=1', (code,)).fetchone()
+                if link:
+                    set_link_tags(conn, link['id'], tags)
+            return jsonify({'tagged': len(codes)})
+
+        elif action == 'expire':
+            expires_at = data.get('expires_at') or None
+            conn.execute(
+                f'UPDATE links SET expires_at=? WHERE code IN ({placeholders})',
+                [expires_at] + list(codes)
+            )
+            return jsonify({'updated': len(codes)})
+
+
+# ─────────────────────────────────────────────
+# CSV Export / Import
+# ─────────────────────────────────────────────
+
+@app.route('/api/links/export')
+@login_required
+def export_links():
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT l.*, GROUP_CONCAT(t.name) as tag_names '
+            'FROM links l '
+            'LEFT JOIN link_tags lt ON l.id=lt.link_id '
+            'LEFT JOIN tags t ON lt.tag_id=t.id '
+            'WHERE l.is_active=1 '
+            'GROUP BY l.id ORDER BY l.created_at DESC'
+        ).fetchall()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['code', 'short_url', 'long_url', 'title', 'tags', 'created_at', 'expires_at', 'clicks'])
+    for row in rows:
+        writer.writerow([
+            row['code'],
+            f"{BASE_URL}/{row['code']}",
+            row['long_url'],
+            row['title'] or '',
+            row['tag_names'] or '',
+            row['created_at'],
+            row['expires_at'] or '',
+            row['clicks'],
+        ])
+    return Response(
+        buf.getvalue().encode('utf-8'),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename="sniplink-export.csv"'}
+    )
+
+
+@app.route('/api/links/import', methods=['POST'])
+@login_required
+def import_links():
+    data     = request.get_json(silent=True) or {}
+    csv_text = (data.get('csv') or '').strip()
+    if not csv_text:
+        return jsonify({'error': 'No CSV data provided'}), 400
+
+    reader  = csv.DictReader(io.StringIO(csv_text))
+    created = 0
+    errors  = []
+
+    with get_db() as conn:
+        for i, row in enumerate(reader, start=2):
+            url = (row.get('url') or row.get('long_url') or '').strip()
+            if not url:
+                errors.append(f'Row {i}: missing URL'); continue
+            if not validate_url(url):
+                errors.append(f'Row {i}: invalid URL "{url[:50]}"'); continue
+
+            custom_code = (row.get('custom_code') or row.get('code') or '').strip()
+            title       = (row.get('title') or '').strip()
+            expires_at  = (row.get('expires_at') or '').strip() or None
+            tags_str    = (row.get('tags') or '').strip()
+            tag_names   = [t.strip() for t in tags_str.split(',') if t.strip()] if tags_str else []
+
+            if custom_code and not re.match(r'^[a-zA-Z0-9]{3,20}$', custom_code):
+                errors.append(f'Row {i}: invalid code "{custom_code}"'); continue
+
+            code = custom_code or generate_code(url)
+            if conn.execute('SELECT 1 FROM links WHERE code=?', (code,)).fetchone():
+                if custom_code:
+                    errors.append(f'Row {i}: code "{custom_code}" already taken'); continue
+                code = generate_code(url + str(time.time()))
+
+            conn.execute(
+                'INSERT INTO links (code, long_url, title, created_at, expires_at) VALUES (?,?,?,?,?)',
+                (code, url, title or None,
+                 datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), expires_at)
+            )
+            link_id = conn.execute('SELECT id FROM links WHERE code=?', (code,)).fetchone()['id']
+            if tag_names:
+                set_link_tags(conn, link_id, tag_names)
+            created += 1
+
+    return jsonify({'created': created, 'errors': errors})
 
 
 # ─────────────────────────────────────────────

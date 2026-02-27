@@ -302,6 +302,30 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
   .input-group { flex-direction:column; }
   .advanced-fields.open,.edit-grid,.qr-grid,.breakdown-grid,.grid-2 { grid-template-columns:1fr; }
 }
+
+/* ── PHASE 4: QR STYLE SELECTOR ── */
+.style-selector { display:flex; gap:6px; flex-wrap:wrap; }
+.style-btn { background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:var(--font-mono); font-size:11px; padding:6px 12px; border-radius:6px; cursor:pointer; transition:all .2s; }
+.style-btn:hover { border-color:var(--accent3); color:#a89cf7; }
+.style-btn.active { background:rgba(124,106,247,.1); border-color:rgba(124,106,247,.4); color:#a89cf7; }
+
+/* ── PHASE 4: LOGO UPLOAD ── */
+.logo-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* ── PHASE 4: BULK ACTION BAR ── */
+.bulk-bar { display:none; align-items:center; gap:8px; padding:10px 14px; background:var(--surface2); border:1px solid rgba(0,229,160,.2); border-radius:var(--radius); margin-bottom:14px; flex-wrap:wrap; }
+.bulk-count { font-family:var(--font-mono); font-size:12px; color:var(--accent); flex:1; min-width:80px; }
+
+/* ── PHASE 4: IMPORT PANEL ── */
+.import-panel { display:none; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:14px; }
+.import-panel.open { display:block; animation:fadeIn .2s ease; }
+.import-panel textarea { width:100%; background:var(--surface3); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-mono); font-size:12px; padding:12px; outline:none; resize:vertical; min-height:100px; transition:border-color .2s; box-sizing:border-box; }
+.import-panel textarea:focus { border-color:var(--accent); }
+.import-result { font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:8px; white-space:pre-wrap; }
+
+/* ── PHASE 4: SELECT CHECKBOX ── */
+.select-check { display:none; align-items:center; margin-right:6px; flex-shrink:0; }
+.link-checkbox { width:15px; height:15px; cursor:pointer; accent-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -401,6 +425,29 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
     </div>
     <div class="tag-filter-list" id="tag-filter-list"></div>
     <button class="btn-sm" onclick="loadDashboard()">↻</button>
+    <button class="btn-sm" id="select-btn" onclick="toggleSelectMode()">⊡ Select</button>
+    <button class="btn-sm" onclick="exportCSV()">↓ Export</button>
+    <button class="btn-sm" onclick="toggleImport()">↑ Import</button>
+  </div>
+
+  <div class="import-panel" id="import-panel">
+    <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.06em">CSV IMPORT — columns: <code>url</code> (required), <code>custom_code</code>, <code>title</code>, <code>tags</code>, <code>expires_at</code></div>
+    <textarea id="import-csv" placeholder="url,title,tags&#10;https://example.com,My Link,tag1&#10;https://another.com,,"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-sm" onclick="document.getElementById('import-file').click()">📎 From file</button>
+      <input type="file" id="import-file" accept=".csv,text/csv" style="display:none">
+      <button class="btn-primary" id="import-btn" onclick="doImport()" style="padding:8px 18px">Import</button>
+    </div>
+    <div class="import-result" id="import-result"></div>
+  </div>
+
+  <div class="bulk-bar" id="bulk-bar">
+    <span class="bulk-count" id="bulk-count">0 selected</span>
+    <button class="btn-sm" onclick="selectAll()">Select all</button>
+    <button class="btn-sm danger" onclick="bulkDelete()">✕ Delete</button>
+    <button class="btn-sm" onclick="bulkTag()">⊕ Tag</button>
+    <button class="btn-sm" onclick="bulkExpire()">⏱ Set Expiry</button>
+    <button class="btn-sm" onclick="toggleSelectMode()">Cancel</button>
   </div>
 
   <div class="links-list" id="links-list">
@@ -423,6 +470,25 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
         <div class="color-field"><label>BACKGROUND</label><div class="color-input-wrap"><input type="color" id="qr-bg-picker" value="#ffffff"><input class="color-hex" id="qr-bg-hex" value="ffffff" maxlength="6"></div></div>
       </div>
       <div style="margin-bottom:18px"><label class="field-label">SIZE: <span id="qr-size-label">300px</span></label><input type="range" id="qr-size" min="150" max="600" value="300" step="50"></div>
+      <div style="margin-bottom:18px">
+        <label class="field-label">DOT STYLE</label>
+        <div class="style-selector" id="qr-style-selector">
+          <button class="style-btn active" data-style="square">■ Square</button>
+          <button class="style-btn" data-style="rounded">▣ Rounded</button>
+          <button class="style-btn" data-style="dots">● Dots</button>
+          <button class="style-btn" data-style="vertical">▐ V-Bars</button>
+          <button class="style-btn" data-style="horizontal">▬ H-Bars</button>
+        </div>
+      </div>
+      <div style="margin-bottom:18px">
+        <label class="field-label">LOGO / ICON <span style="font-weight:400;color:var(--muted)">(optional — centered overlay)</span></label>
+        <div class="logo-row">
+          <button class="btn-sm" onclick="document.getElementById('qr-logo-input').click()">↑ Upload Logo</button>
+          <span id="qr-logo-name" style="font-family:var(--font-mono);font-size:11px;color:var(--muted)"></span>
+          <button class="btn-sm danger" id="qr-logo-clear" style="display:none" onclick="clearQrLogo()">✕ Remove</button>
+        </div>
+        <input type="file" id="qr-logo-input" accept="image/*" style="display:none">
+      </div>
       <button class="btn-primary" id="qr-generate-btn" style="width:100%">Generate QR Code</button>
     </div>
     <div class="panel qr-preview-panel">
@@ -455,11 +521,15 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 
 <script>
 const BASE = window.location.origin;
-let loggedIn = false;
-let allTags = [];
-let activeTag = null;
+let loggedIn     = false;
+let allTags      = [];
+let activeTag    = null;
 let tagInputTags = [];
-let searchTimer = null;
+let searchTimer  = null;
+let selectMode   = false;
+let selectedCodes = new Set();
+let qrStyle      = 'square';
+let qrLogoBase64 = null;
 
 async function authFetch(url, opts = {}) {
   const resp = await fetch(url, {
@@ -619,6 +689,11 @@ function buildLinkItem(l) {
 
   item.innerHTML = `
     <div class="link-row" onclick="toggleExpand('${l.code}')">
+      <div class="select-check" style="display:${selectMode?'flex':'none'}">
+        <input type="checkbox" class="link-checkbox" id="chk-${l.code}"
+               ${selectedCodes.has(l.code)?'checked':''} onclick="event.stopPropagation()"
+               onchange="toggleSelect('${l.code}')">
+      </div>
       <div class="link-code">${l.code}</div>
       <div class="link-details">
         <div class="link-title">${escHtml(l.title||l.long_url)}</div>
@@ -831,16 +906,186 @@ qrBgP.addEventListener('input',()=>qrBgH.value=qrBgP.value.replace('#',''));
 qrFgH.addEventListener('input',()=>{ if(qrFgH.value.length===6) qrFgP.value='#'+qrFgH.value; });
 qrBgH.addEventListener('input',()=>{ if(qrBgH.value.length===6) qrBgP.value='#'+qrBgH.value; });
 qrSz.addEventListener('input',()=>document.getElementById('qr-size-label').textContent=qrSz.value+'px');
-document.getElementById('qr-generate-btn').addEventListener('click',()=>{
-  const url=document.getElementById('qr-url-input').value.trim();
-  if(!url){toast('Please enter a URL','error');return;}
-  const fg=qrFgH.value.replace('#','')||'000000', bg=qrBgH.value.replace('#','')||'ffffff', size=qrSz.value;
-  const qrUrl=`${BASE}/api/qr/custom?url=${encodeURIComponent(url)}&fg=${fg}&bg=${bg}&size=${size}&t=${Date.now()}`;
-  document.getElementById('qr-preview-wrap').innerHTML=`<div class="qr-preview-img"><img src="${qrUrl}" width="${Math.min(size,300)}" height="${Math.min(size,300)}" alt="QR"></div>`;
-  document.getElementById('qr-dl-row').style.display='flex';
-  document.getElementById('qr-download-link').href=qrUrl;
+
+// QR style selector
+document.querySelectorAll('#qr-style-selector .style-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#qr-style-selector .style-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    qrStyle = btn.dataset.style;
+  });
+});
+
+// Logo upload
+document.getElementById('qr-logo-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    qrLogoBase64 = e.target.result.split(',')[1];
+    document.getElementById('qr-logo-name').textContent = file.name;
+    document.getElementById('qr-logo-clear').style.display = 'inline-block';
+  };
+  reader.readAsDataURL(file);
+});
+function clearQrLogo() {
+  qrLogoBase64 = null;
+  document.getElementById('qr-logo-input').value = '';
+  document.getElementById('qr-logo-name').textContent = '';
+  document.getElementById('qr-logo-clear').style.display = 'none';
+}
+
+document.getElementById('qr-generate-btn').addEventListener('click', async () => {
+  const url = document.getElementById('qr-url-input').value.trim();
+  if (!url) { toast('Please enter a URL','error'); return; }
+  const fg   = qrFgH.value.replace('#','') || '000000';
+  const bg   = qrBgH.value.replace('#','') || 'ffffff';
+  const size = parseInt(qrSz.value);
+  const btn  = document.getElementById('qr-generate-btn');
+
+  if (qrLogoBase64 || qrStyle !== 'square') {
+    btn.disabled = true; btn.textContent = 'Generating...';
+    try {
+      const body = { url, fg, bg, size, style: qrStyle };
+      if (qrLogoBase64) body.logo = qrLogoBase64;
+      const resp = await authFetch(`${BASE}/api/qr/custom`, {method:'POST', body:JSON.stringify(body)});
+      if (!resp.ok) { toast('Failed to generate QR','error'); return; }
+      const blob   = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      document.getElementById('qr-preview-wrap').innerHTML =
+        `<div class="qr-preview-img"><img src="${blobUrl}" width="${Math.min(size,300)}" height="${Math.min(size,300)}" alt="QR"></div>`;
+      document.getElementById('qr-dl-row').style.display = 'flex';
+      document.getElementById('qr-download-link').href = blobUrl;
+    } catch(e) { toast('Network error','error'); }
+    finally { btn.disabled = false; btn.textContent = 'Generate QR Code'; }
+  } else {
+    const qrUrl = `${BASE}/api/qr/custom?url=${encodeURIComponent(url)}&fg=${fg}&bg=${bg}&size=${size}&t=${Date.now()}`;
+    document.getElementById('qr-preview-wrap').innerHTML =
+      `<div class="qr-preview-img"><img src="${qrUrl}" width="${Math.min(size,300)}" height="${Math.min(size,300)}" alt="QR"></div>`;
+    document.getElementById('qr-dl-row').style.display = 'flex';
+    document.getElementById('qr-download-link').href = qrUrl;
+  }
   toast('QR generated!');
 });
+
+// ── Select Mode & Bulk Ops ─────────────────────────
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  selectedCodes.clear();
+  const btn = document.getElementById('select-btn');
+  btn.classList.toggle('active', selectMode);
+  btn.textContent = selectMode ? '✓ Selecting' : '⊡ Select';
+  document.querySelectorAll('.select-check').forEach(el => {
+    el.style.display = selectMode ? 'flex' : 'none';
+  });
+  document.querySelectorAll('.link-checkbox').forEach(el => { el.checked = false; });
+  updateBulkBar();
+}
+
+function toggleSelect(code) {
+  if (selectedCodes.has(code)) selectedCodes.delete(code);
+  else selectedCodes.add(code);
+  updateBulkBar();
+}
+
+function selectAll() {
+  const checkboxes = document.querySelectorAll('.link-checkbox');
+  const allChecked = [...checkboxes].every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    const code = cb.id.replace('chk-', '');
+    if (!allChecked) selectedCodes.add(code); else selectedCodes.delete(code);
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  if (selectMode && selectedCodes.size > 0) {
+    bar.style.display = 'flex';
+    document.getElementById('bulk-count').textContent = `${selectedCodes.size} selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function bulkDelete() {
+  if (!selectedCodes.size) return;
+  if (!confirm(`Delete ${selectedCodes.size} link(s)?`)) return;
+  const codes = [...selectedCodes];
+  const resp = await authFetch(`${BASE}/api/links/bulk`, {method:'POST', body:JSON.stringify({action:'delete', codes})});
+  if (!resp.ok) { toast('Bulk delete failed','error'); return; }
+  codes.forEach(c => document.getElementById(`item-${c}`)?.remove());
+  selectedCodes.clear(); updateBulkBar(); loadStats();
+  toast(`Deleted ${codes.length} link(s)`);
+}
+
+async function bulkTag() {
+  if (!selectedCodes.size) return;
+  const input = prompt('Tags to apply (comma-separated):');
+  if (!input) return;
+  const tags  = input.split(',').map(t=>t.trim().toLowerCase()).filter(Boolean);
+  const codes = [...selectedCodes];
+  const resp = await authFetch(`${BASE}/api/links/bulk`, {method:'POST', body:JSON.stringify({action:'tag', codes, tags})});
+  if (!resp.ok) { toast('Bulk tag failed','error'); return; }
+  selectedCodes.clear(); updateBulkBar(); loadDashboard();
+  toast(`Tagged ${codes.length} link(s)`);
+}
+
+async function bulkExpire() {
+  if (!selectedCodes.size) return;
+  const dateVal = prompt('Expiry date (YYYY-MM-DD), blank to clear:');
+  if (dateVal === null) return;
+  const codes = [...selectedCodes];
+  const resp = await authFetch(`${BASE}/api/links/bulk`, {method:'POST', body:JSON.stringify({action:'expire', codes, expires_at: dateVal||null})});
+  if (!resp.ok) { toast('Bulk expire failed','error'); return; }
+  selectedCodes.clear(); updateBulkBar(); loadDashboard();
+  toast(`Updated ${codes.length} link(s)`);
+}
+
+// ── CSV Export ─────────────────────────────────────
+async function exportCSV() {
+  const resp = await authFetch(`${BASE}/api/links/export`);
+  if (!resp.ok) { toast('Export failed','error'); return; }
+  const blob = await resp.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'sniplink-export.csv'; a.click();
+  URL.revokeObjectURL(url);
+  toast('Export downloaded!');
+}
+
+// ── CSV Import ─────────────────────────────────────
+function toggleImport() {
+  document.getElementById('import-panel').classList.toggle('open');
+}
+
+document.getElementById('import-file').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('import-csv').value = e.target.result; };
+  reader.readAsText(file);
+});
+
+async function doImport() {
+  const csv = document.getElementById('import-csv').value.trim();
+  if (!csv) { toast('Paste CSV data first','error'); return; }
+  const btn = document.getElementById('import-btn');
+  btn.disabled = true; btn.textContent = 'Importing...';
+  try {
+    const resp = await authFetch(`${BASE}/api/links/import`, {method:'POST', body:JSON.stringify({csv})});
+    const data = await resp.json();
+    if (!resp.ok) { toast(data.error||'Import failed','error'); return; }
+    const resultEl = document.getElementById('import-result');
+    let msg = `✓ Created ${data.created} link(s)`;
+    if (data.errors.length) { msg += `\n✕ Errors:\n` + data.errors.join('\n'); }
+    resultEl.textContent = msg;
+    toast(`Imported ${data.created} link(s)`, data.errors.length ? 'error' : 'success');
+    if (data.created > 0) loadDashboard();
+  } catch(e) { toast('Network error','error'); }
+  finally { btn.disabled = false; btn.textContent = 'Import'; }
+}
 
 // ── Debug panel (activated by ?debug=1 in URL) ─────
 if (new URLSearchParams(window.location.search).get('debug') === '1') {
