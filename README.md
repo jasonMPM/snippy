@@ -36,14 +36,19 @@ Single-admin: one `ADMIN_PASSWORD` env var protects all write operations. No use
 - [x] Works correctly behind Cloudflare and Nginx Proxy Manager
 
 ### 🔜 Phase 4 — QR & Link Management
-- [ ] QR code logo/icon embedding (upload image, centered overlay)
-- [ ] QR dot shape presets (rounded, dots, classy, extra-rounded)
-- [ ] Bulk link operations (bulk delete, bulk tag, bulk expire)
-- [ ] Link folders/groups (organize without full workspaces)
-- [ ] CSV import — paste or upload a spreadsheet of URLs to shorten in batch
-- [ ] CSV export — download all links + stats
+- [x] QR code logo/icon embedding (upload image, centered overlay)
+- [x] QR dot shape presets (rounded, dots, vertical bars, horizontal bars)
+- [x] Bulk link operations (bulk delete, bulk tag, bulk expire)
+- [x] CSV import — paste or upload a spreadsheet of URLs to shorten in batch
+- [x] CSV export — download all links + stats
+- [ ] Link folders/groups (organize without full workspaces) — deferred
 
-### 🔜 Phase 5 — Multi-user (Simplified)
+### ✅ Phase 5 — UX Improvements (Complete)
+- [x] Pin / favorites — star any link to float it to the top of the dashboard list
+- [x] One-click copy — inline copy button on every link row, no expand needed
+- [x] Auto-fetch title — URL field blur triggers a server-side title fetch (`og:title` → `<title>`); pre-fills the title field when empty (works in both the Shorten form and the edit form)
+
+### 🔜 Phase 6 — Multi-user (Simplified)
 - [ ] Per-user accounts with password (no invites, no workspaces)
 - [ ] Admin creates accounts directly (no self-registration)
 - [ ] Each user sees only their own links
@@ -186,7 +191,7 @@ All write endpoints require an active session (log in via the web UI first, or P
 | POST | `/api/shorten` | ✓ | Shorten a URL |
 | GET | `/api/links` | ✓ | List links (supports `?q=`, `?tag=`, `?page=`, `?per_page=`) |
 | GET | `/api/links/:code` | ✓ | Link detail |
-| PATCH | `/api/links/:code` | ✓ | Edit link (url, title, expires_at, tags) |
+| PATCH | `/api/links/:code` | ✓ | Edit link (`url`, `title`, `expires_at`, `tags`, `is_pinned`) |
 | DELETE | `/api/links/:code` | ✓ | Delete link |
 | GET | `/api/links/:code/analytics` | ✓ | Click analytics (supports `?days=7\|30\|90`) |
 
@@ -196,8 +201,13 @@ All write endpoints require an active session (log in via the web UI first, or P
 |---|---|---|---|
 | GET | `/api/stats` | ✓ | Total links, total clicks, clicks/7d, top links |
 | GET | `/api/tags` | ✓ | All tags with link counts |
+| GET | `/api/fetch-title` | ✓ | Fetch page title for a URL server-side (`?url=`). Returns `{"title":"…"}`. Tries `og:title` then `<title>`. |
 | GET | `/api/qr/:code` | — | QR PNG for a short link |
-| GET | `/api/qr/custom` | — | QR PNG for any URL (`?url=`, `?fg=`, `?bg=`, `?size=`) |
+| GET | `/api/qr/custom` | — | QR PNG for any URL (`?url=`, `?fg=`, `?bg=`, `?size=`, `?style=`) |
+| POST | `/api/qr/custom` | — | QR PNG with logo overlay (`{url, fg, bg, size, style, logo}` — logo as base64) |
+| POST | `/api/links/bulk` | ✓ | Bulk operations (`{action: "delete"\|"tag"\|"expire", codes: […]}`) |
+| GET | `/api/links/export` | ✓ | Download all links as CSV |
+| POST | `/api/links/import` | ✓ | Import links from CSV text (`{csv: "…"}`) |
 | GET | `/api/health` | — | Health check (`{"status":"ok"}`) |
 | GET | `/:code` | — | Redirect to destination URL |
 
