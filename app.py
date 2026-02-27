@@ -1172,7 +1172,7 @@ def debug_auth():
     """Shows exactly what auth info Flask received — enable with DEBUG=true.
     Visit this endpoint from the browser after logging in to diagnose 401s.
     """
-    if not app.debug:
+    if os.environ.get('DEBUG', 'false').lower() != 'true':
         return jsonify({'error': 'Only available when DEBUG=true'}), 403
     kind, token = get_token_from_request()
     payload = None
