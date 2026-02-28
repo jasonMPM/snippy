@@ -22,6 +22,7 @@ services:
     environment:
       - BASE_URL=https://yourdomain.com     # ← Your public URL (domain or subdomain)
       - APP_NAME=to.ALWISP                  # ← Displayed in the UI header/logo/title
+      - ADMIN_USERNAME=admin                # ← Admin account username (default: admin)
       - PORT=5000
       - DEBUG=false
       - SECRET_KEY=replace-with-a-long-random-string   # ← Change this!

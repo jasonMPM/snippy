@@ -17,6 +17,7 @@ import zlib
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, redirect, Response, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
@@ -26,6 +27,8 @@ if not app.config['SECRET_KEY']:
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
 if not ADMIN_PASSWORD:
     raise RuntimeError("ADMIN_PASSWORD environment variable must be set")
+
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
 
 DB_PATH  = os.environ.get('DB_PATH',  '/app/data/sniplink.db')
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000').rstrip('/')
@@ -53,6 +56,13 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with get_db() as conn:
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                is_admin      INTEGER DEFAULT 0,
+                created_at    TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS links (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 code       TEXT UNIQUE NOT NULL,
@@ -87,24 +97,54 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_clicks_link ON clicks(link_id);
             CREATE INDEX IF NOT EXISTS idx_clicks_at   ON clicks(clicked_at);
         """)
-        # Idempotent migration — add is_pinned to existing databases
-        try:
-            conn.execute("ALTER TABLE links ADD COLUMN is_pinned INTEGER DEFAULT 0")
-        except Exception:
-            pass
+        # Idempotent migrations — safe to run on existing databases
+        for migration in [
+            "ALTER TABLE links ADD COLUMN is_pinned INTEGER DEFAULT 0",
+            "ALTER TABLE links ADD COLUMN user_id INTEGER REFERENCES users(id)",
+        ]:
+            try:
+                conn.execute(migration)
+            except Exception:
+                pass
+
+def seed_admin():
+    """Upsert the admin account from env vars on every startup."""
+    pw_hash = generate_password_hash(ADMIN_PASSWORD)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_db() as conn:
+        existing = conn.execute('SELECT id FROM users WHERE username=?', (ADMIN_USERNAME,)).fetchone()
+        if existing:
+            conn.execute('UPDATE users SET password_hash=?, is_admin=1 WHERE username=?',
+                         (pw_hash, ADMIN_USERNAME))
+        else:
+            conn.execute(
+                'INSERT INTO users (username, password_hash, is_admin, created_at) VALUES (?,?,1,?)',
+                (ADMIN_USERNAME, pw_hash, now)
+            )
 
 init_db()
+seed_admin()
 
 
 # ─────────────────────────────────────────────
-# Auth decorator
+# Auth decorators
 # ─────────────────────────────────────────────
 
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get('authenticated'):
+        if not session.get('authenticated') or not session.get('user_id'):
             return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('authenticated') or not session.get('user_id'):
+            return jsonify({'error': 'Authentication required'}), 401
+        if not session.get('is_admin'):
+            return jsonify({'error': 'Admin access required'}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -325,12 +365,25 @@ def get_config():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data     = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
     password = data.get('password') or ''
-    if not hmac.compare_digest(password, ADMIN_PASSWORD):
-        return jsonify({'error': 'Invalid password'}), 401
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    with get_db() as conn:
+        user = conn.execute('SELECT * FROM users WHERE username=?', (username,)).fetchone()
+    if not user or not check_password_hash(user['password_hash'], password):
+        return jsonify({'error': 'Invalid username or password'}), 401
     session.permanent = True
     session['authenticated'] = True
-    return jsonify({'authenticated': True})
+    session['user_id']  = user['id']
+    session['username'] = user['username']
+    session['is_admin'] = bool(user['is_admin'])
+    return jsonify({
+        'authenticated': True,
+        'id':       user['id'],
+        'username': user['username'],
+        'is_admin': bool(user['is_admin']),
+    })
 
 
 @app.route('/api/auth/logout', methods=['POST'])
@@ -341,8 +394,13 @@ def logout():
 
 @app.route('/api/auth/me', methods=['GET'])
 def me():
-    if session.get('authenticated'):
-        return jsonify({'authenticated': True})
+    if session.get('authenticated') and session.get('user_id'):
+        return jsonify({
+            'authenticated': True,
+            'id':       session.get('user_id'),
+            'username': session.get('username'),
+            'is_admin': session.get('is_admin', False),
+        })
     return jsonify({'authenticated': False}), 401
 
 
@@ -377,10 +435,10 @@ def shorten():
             code = generate_code(long_url + str(time.time()))
 
         conn.execute(
-            'INSERT INTO links (code,long_url,title,created_at,expires_at) VALUES (?,?,?,?,?)',
+            'INSERT INTO links (code,long_url,title,created_at,expires_at,user_id) VALUES (?,?,?,?,?,?)',
             (code, long_url, title or None,
              datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-             expires_at or None)
+             expires_at or None, session.get('user_id'))
         )
         link_id = conn.execute('SELECT id FROM links WHERE code=?', (code,)).fetchone()['id']
         if tags:
@@ -404,9 +462,16 @@ def list_links():
     offset     = (page - 1) * per_page
     search     = (request.args.get('q') or '').strip()
     tag_filter = (request.args.get('tag') or '').strip().lower()
+    is_admin   = session.get('is_admin', False)
+    user_id    = session.get('user_id')
 
     where_clauses = ['l.is_active=1']
     params = []
+
+    # Non-admins see only their own links
+    if not is_admin:
+        where_clauses.append('l.user_id=?')
+        params.append(user_id)
 
     if search:
         where_clauses.append('(l.code LIKE ? OR l.long_url LIKE ? OR l.title LIKE ?)')
@@ -431,12 +496,18 @@ def list_links():
     return jsonify({'links': links, 'total': total, 'page': page, 'per_page': per_page})
 
 
+def _can_access_link(link):
+    """Return True if the current session user may read/write this link."""
+    if session.get('is_admin'):
+        return True
+    return link['user_id'] == session.get('user_id')
+
 @app.route('/api/links/<code>', methods=['GET'])
 @login_required
 def link_detail(code):
     with get_db() as conn:
         link = conn.execute('SELECT * FROM links WHERE code=?', (code,)).fetchone()
-        if not link:
+        if not link or not _can_access_link(link):
             return jsonify({'error': 'Not found'}), 404
         return jsonify(format_link(link, conn))
 
@@ -446,7 +517,7 @@ def link_detail(code):
 def edit_link(code):
     with get_db() as conn:
         link = conn.execute('SELECT * FROM links WHERE code=? AND is_active=1', (code,)).fetchone()
-        if not link:
+        if not link or not _can_access_link(link):
             return jsonify({'error': 'Not found'}), 404
 
         data = request.get_json(silent=True) or {}
@@ -475,7 +546,7 @@ def edit_link(code):
 def delete_link(code):
     with get_db() as conn:
         link = conn.execute('SELECT * FROM links WHERE code=?', (code,)).fetchone()
-        if not link:
+        if not link or not _can_access_link(link):
             return jsonify({'error': 'Not found'}), 404
         conn.execute('UPDATE links SET is_active=0 WHERE code=?', (code,))
     return jsonify({'success': True})
@@ -491,7 +562,7 @@ def link_analytics(code):
     days = int(request.args.get('days', 30))
     with get_db() as conn:
         link = conn.execute('SELECT * FROM links WHERE code=?', (code,)).fetchone()
-        if not link:
+        if not link or not _can_access_link(link):
             return jsonify({'error': 'Not found'}), 404
 
         link_id = link['id']
@@ -684,26 +755,41 @@ def bulk_links():
     if action not in ('delete', 'tag', 'expire'):
         return jsonify({'error': 'Invalid action'}), 400
 
+    is_admin = session.get('is_admin', False)
+    user_id  = session.get('user_id')
     placeholders = ','.join('?' * len(codes))
     with get_db() as conn:
         if action == 'delete':
-            conn.execute(f'UPDATE links SET is_active=0 WHERE code IN ({placeholders})', codes)
+            if is_admin:
+                conn.execute(f'UPDATE links SET is_active=0 WHERE code IN ({placeholders})', codes)
+            else:
+                conn.execute(
+                    f'UPDATE links SET is_active=0 WHERE code IN ({placeholders}) AND user_id=?',
+                    list(codes) + [user_id]
+                )
             return jsonify({'deleted': len(codes)})
 
         elif action == 'tag':
             tags = data.get('tags', [])
             for code in codes:
-                link = conn.execute('SELECT id FROM links WHERE code=? AND is_active=1', (code,)).fetchone()
-                if link:
+                q = 'SELECT id,user_id FROM links WHERE code=? AND is_active=1'
+                link = conn.execute(q, (code,)).fetchone()
+                if link and (is_admin or link['user_id'] == user_id):
                     set_link_tags(conn, link['id'], tags)
             return jsonify({'tagged': len(codes)})
 
         elif action == 'expire':
             expires_at = data.get('expires_at') or None
-            conn.execute(
-                f'UPDATE links SET expires_at=? WHERE code IN ({placeholders})',
-                [expires_at] + list(codes)
-            )
+            if is_admin:
+                conn.execute(
+                    f'UPDATE links SET expires_at=? WHERE code IN ({placeholders})',
+                    [expires_at] + list(codes)
+                )
+            else:
+                conn.execute(
+                    f'UPDATE links SET expires_at=? WHERE code IN ({placeholders}) AND user_id=?',
+                    [expires_at] + list(codes) + [user_id]
+                )
             return jsonify({'updated': len(codes)})
 
 
@@ -714,15 +800,28 @@ def bulk_links():
 @app.route('/api/links/export')
 @login_required
 def export_links():
+    is_admin = session.get('is_admin', False)
+    user_id  = session.get('user_id')
     with get_db() as conn:
-        rows = conn.execute(
-            'SELECT l.*, GROUP_CONCAT(t.name) as tag_names '
-            'FROM links l '
-            'LEFT JOIN link_tags lt ON l.id=lt.link_id '
-            'LEFT JOIN tags t ON lt.tag_id=t.id '
-            'WHERE l.is_active=1 '
-            'GROUP BY l.id ORDER BY l.created_at DESC'
-        ).fetchall()
+        if is_admin:
+            rows = conn.execute(
+                'SELECT l.*, GROUP_CONCAT(t.name) as tag_names '
+                'FROM links l '
+                'LEFT JOIN link_tags lt ON l.id=lt.link_id '
+                'LEFT JOIN tags t ON lt.tag_id=t.id '
+                'WHERE l.is_active=1 '
+                'GROUP BY l.id ORDER BY l.created_at DESC'
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                'SELECT l.*, GROUP_CONCAT(t.name) as tag_names '
+                'FROM links l '
+                'LEFT JOIN link_tags lt ON l.id=lt.link_id '
+                'LEFT JOIN tags t ON lt.tag_id=t.id '
+                'WHERE l.is_active=1 AND l.user_id=? '
+                'GROUP BY l.id ORDER BY l.created_at DESC',
+                (user_id,)
+            ).fetchall()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -781,9 +880,10 @@ def import_links():
                 code = generate_code(url + str(time.time()))
 
             conn.execute(
-                'INSERT INTO links (code, long_url, title, created_at, expires_at) VALUES (?,?,?,?,?)',
+                'INSERT INTO links (code, long_url, title, created_at, expires_at, user_id) VALUES (?,?,?,?,?,?)',
                 (code, url, title or None,
-                 datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), expires_at)
+                 datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), expires_at,
+                 session.get('user_id'))
             )
             link_id = conn.execute('SELECT id FROM links WHERE code=?', (code,)).fetchone()['id']
             if tag_names:
@@ -791,6 +891,74 @@ def import_links():
             created += 1
 
     return jsonify({'created': created, 'errors': errors})
+
+
+# ─────────────────────────────────────────────
+# Admin — User Management
+# ─────────────────────────────────────────────
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_list_users():
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT id, username, is_admin, created_at, '
+            '(SELECT COUNT(*) FROM links WHERE user_id=users.id AND is_active=1) as link_count '
+            'FROM users ORDER BY created_at ASC'
+        ).fetchall()
+    return jsonify({'users': [dict(r) for r in rows]})
+
+
+@app.route('/api/admin/users', methods=['POST'])
+@admin_required
+def admin_create_user():
+    data     = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = (data.get('password') or '').strip()
+    is_admin = bool(data.get('is_admin', False))
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    if not re.match(r'^[a-zA-Z0-9_.-]{2,32}$', username):
+        return jsonify({'error': 'Username must be 2–32 alphanumeric/._- characters'}), 400
+    with get_db() as conn:
+        if conn.execute('SELECT 1 FROM users WHERE username=?', (username,)).fetchone():
+            return jsonify({'error': 'Username already taken'}), 409
+        conn.execute(
+            'INSERT INTO users (username, password_hash, is_admin, created_at) VALUES (?,?,?,?)',
+            (username, generate_password_hash(password), 1 if is_admin else 0,
+             datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
+        )
+        user = conn.execute('SELECT id, username, is_admin, created_at FROM users WHERE username=?',
+                            (username,)).fetchone()
+    return jsonify(dict(user)), 201
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    if user_id == session.get('user_id'):
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+    with get_db() as conn:
+        user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Not found'}), 404
+        conn.execute('DELETE FROM users WHERE id=?', (user_id,))
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/users/<int:user_id>/password', methods=['PATCH'])
+@admin_required
+def admin_change_password(user_id):
+    data     = request.get_json(silent=True) or {}
+    password = (data.get('password') or '').strip()
+    if not password:
+        return jsonify({'error': 'Password required'}), 400
+    with get_db() as conn:
+        if not conn.execute('SELECT 1 FROM users WHERE id=?', (user_id,)).fetchone():
+            return jsonify({'error': 'Not found'}), 404
+        conn.execute('UPDATE users SET password_hash=? WHERE id=?',
+                     (generate_password_hash(password), user_id))
+    return jsonify({'success': True})
 
 
 # ─────────────────────────────────────────────

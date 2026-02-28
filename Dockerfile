@@ -59,6 +59,7 @@ USER sniplink
 # Non-sensitive defaults only — SECRET_KEY and ADMIN_PASSWORD must be passed at runtime
 ENV BASE_URL=http://localhost:5000 \
     APP_NAME=to.ALWISP \
+    ADMIN_USERNAME=admin \
     PORT=5000 \
     DEBUG=false \
     DB_PATH=/app/data/sniplink.db

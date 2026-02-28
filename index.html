@@ -352,7 +352,8 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
       <span style="color:var(--text)" id="brand-modal-pre">to</span><span style="color:var(--accent);text-shadow:0 0 12px var(--accent)" id="brand-modal-dot">.</span><span style="text-transform:uppercase" id="brand-modal-suf">ALWISP</span>
     </div>
     <div class="modal-form active" id="form-login">
-      <label>PASSWORD<input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"></label>
+      <label>USERNAME<input type="text" id="login-username" placeholder="admin" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()"></label>
+      <label>PASSWORD<input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></label>
       <div class="modal-err" id="login-err"></div>
       <button class="btn-primary" onclick="doLogin()" style="width:100%">Login</button>
     </div>
@@ -368,8 +369,13 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
     <button class="active" data-view="home">Shorten</button>
     <button data-view="dashboard">Dashboard</button>
     <button data-view="qr">QR Codes</button>
+    <button data-view="admin" id="admin-nav-btn" style="display:none">Users</button>
   </nav>
   <div class="header-right">
+    <div class="user-badge" id="user-badge" style="display:none">
+      <span id="user-badge-name"></span>
+      <span class="admin-tag" id="user-badge-admin" style="display:none">ADMIN</span>
+    </div>
     <button class="btn-logout" id="logout-btn" style="display:none" onclick="doLogout()">Logout</button>
   </div>
 </header>
@@ -518,6 +524,34 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 </div>
 
 
+<!-- ── ADMIN ── -->
+<div class="view" id="view-admin">
+  <div class="section-head" style="margin-bottom:24px">
+    <div><div class="section-title">User Management</div><div style="color:var(--muted);font-size:13px;margin-top:3px">Create and manage user accounts</div></div>
+    <button class="btn-primary" onclick="showCreateUser()">+ New User</button>
+  </div>
+
+  <div class="panel" id="create-user-panel" style="display:none;margin-bottom:20px">
+    <h3>CREATE USER</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div><label class="field-label">USERNAME</label><input class="field-input" id="new-username" placeholder="username"></div>
+      <div><label class="field-label">PASSWORD</label><input class="field-input" type="password" id="new-password" placeholder="••••••••"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-family:var(--font-mono)">
+        <input type="checkbox" id="new-is-admin"> Admin
+      </label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="createUser()">Create</button>
+      <button class="btn-sm" onclick="hideCreateUser()">Cancel</button>
+    </div>
+    <div class="modal-err" id="create-user-err" style="margin-top:10px"></div>
+  </div>
+
+  <div id="users-list"><div class="empty-state"><p>Loading...</p></div></div>
+</div>
+
 </main>
 
 <div class="toast-container" id="toast-container"></div>
@@ -537,6 +571,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
 <script>
 const BASE = window.location.origin;
 let loggedIn     = false;
+let currentUser  = null;
 let allTags      = [];
 let activeTag    = null;
 let tagInputTags = [];
@@ -571,6 +606,7 @@ function showView(name) {
   if (btn) btn.classList.add('active');
   document.getElementById(`view-${name}`)?.classList.add('active');
   if (name === 'dashboard') loadDashboard();
+  if (name === 'admin')     loadUsers();
 }
 
 // ── Toast ──────────────────────────────────────────
@@ -587,35 +623,50 @@ function showAuthModal() { document.getElementById('auth-modal').classList.remov
 function hideAuthModal() { document.getElementById('auth-modal').classList.add('hidden'); }
 
 async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
   const errEl    = document.getElementById('login-err');
   errEl.classList.remove('show');
   try {
     const resp = await fetch(`${BASE}/api/auth/login`, {
       method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({password})
+      body: JSON.stringify({username, password})
     });
     const d = await resp.json();
     if (!resp.ok) { errEl.textContent = d.error; errEl.classList.add('show'); return; }
     loggedIn = true;
-    onLoggedIn();
+    onLoggedIn(d);
   } catch(e) { errEl.textContent='Network error'; errEl.classList.add('show'); }
 }
 
 async function doLogout() {
   await fetch(`${BASE}/api/auth/logout`, {method:'POST', credentials:'include'}).catch(()=>{});
   loggedIn = false;
+  currentUser = null;
   onLoggedOut();
 }
 
-function onLoggedIn() {
+function onLoggedIn(userData) {
+  currentUser = userData;
   hideAuthModal();
+  // User badge
+  const badge    = document.getElementById('user-badge');
+  const badgeName  = document.getElementById('user-badge-name');
+  const badgeAdmin = document.getElementById('user-badge-admin');
+  badgeName.textContent = userData.username || '';
+  badge.style.display   = 'flex';
+  badgeAdmin.style.display = userData.is_admin ? 'inline' : 'none';
+  // Admin nav tab
+  document.getElementById('admin-nav-btn').style.display = userData.is_admin ? '' : 'none';
   document.getElementById('logout-btn').style.display = 'block';
   loadDashboard();
 }
 
 function onLoggedOut() {
-  document.getElementById('logout-btn').style.display = 'none';
+  currentUser = null;
+  document.getElementById('user-badge').style.display   = 'none';
+  document.getElementById('admin-nav-btn').style.display = 'none';
+  document.getElementById('logout-btn').style.display   = 'none';
   showView('home');
   showAuthModal();
 }
@@ -658,7 +709,12 @@ async function applyConfig() {
 
   try {
     const resp = await fetch(`${BASE}/api/auth/me`, {credentials:'include'});
-    if (resp.ok) { loggedIn = true; onLoggedIn(); return; }
+    if (resp.ok) {
+      const data = await resp.json();
+      loggedIn = true;
+      onLoggedIn(data);
+      return;
+    }
   } catch(e) {}
 
   showAuthModal();
@@ -1198,6 +1254,92 @@ async function doImport() {
     if (data.created > 0) loadDashboard();
   } catch(e) { toast('Network error','error'); }
   finally { btn.disabled = false; btn.textContent = 'Import'; }
+}
+
+// ── Admin — User Management ────────────────────────
+async function loadUsers() {
+  const container = document.getElementById('users-list');
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/users`);
+    if (!resp.ok) { container.innerHTML = '<div class="empty-state"><p>Access denied.</p></div>'; return; }
+    const { users } = await resp.json();
+    if (!users.length) { container.innerHTML = '<div class="empty-state"><p>No users yet.</p></div>'; return; }
+    container.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-mono)">
+        <thead><tr style="color:var(--muted);font-size:11px;letter-spacing:.06em;border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:8px 12px">USERNAME</th>
+          <th style="text-align:left;padding:8px 12px">ROLE</th>
+          <th style="text-align:left;padding:8px 12px">LINKS</th>
+          <th style="text-align:left;padding:8px 12px">CREATED</th>
+          <th style="text-align:right;padding:8px 12px">ACTIONS</th>
+        </tr></thead>
+        <tbody>${users.map(u => `
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:10px 12px">${u.username}${u.id === (currentUser&&currentUser.id) ? ' <span style="color:var(--muted);font-size:10px">(you)</span>' : ''}</td>
+            <td style="padding:10px 12px"><span style="color:${u.is_admin?'var(--accent)':'var(--muted)'};font-size:11px">${u.is_admin?'ADMIN':'USER'}</span></td>
+            <td style="padding:10px 12px;color:var(--muted)">${u.link_count}</td>
+            <td style="padding:10px 12px;color:var(--muted)">${u.created_at.slice(0,10)}</td>
+            <td style="padding:10px 12px;text-align:right;display:flex;gap:6px;justify-content:flex-end">
+              <button class="btn-sm" onclick="promptChangePassword(${u.id},'${u.username}')">Change PW</button>
+              ${u.id !== (currentUser&&currentUser.id) ? `<button class="btn-sm danger" onclick="deleteUser(${u.id},'${u.username}')">Delete</button>` : ''}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) { container.innerHTML = '<div class="empty-state"><p>Failed to load users.</p></div>'; }
+}
+
+function showCreateUser() {
+  document.getElementById('create-user-panel').style.display = 'block';
+  document.getElementById('new-username').focus();
+}
+function hideCreateUser() {
+  document.getElementById('create-user-panel').style.display = 'none';
+  document.getElementById('new-username').value = '';
+  document.getElementById('new-password').value = '';
+  document.getElementById('new-is-admin').checked = false;
+  document.getElementById('create-user-err').textContent = '';
+}
+
+async function createUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const password = document.getElementById('new-password').value;
+  const is_admin = document.getElementById('new-is-admin').checked;
+  const errEl    = document.getElementById('create-user-err');
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = 'Username and password required'; return; }
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/users`, {
+      method:'POST', body: JSON.stringify({username, password, is_admin})
+    });
+    const d = await resp.json();
+    if (!resp.ok) { errEl.textContent = d.error; return; }
+    toast(`User "${username}" created`);
+    hideCreateUser();
+    loadUsers();
+  } catch(e) { errEl.textContent = 'Network error'; }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`Delete user "${username}"? Their links will remain in the database.`)) return;
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/users/${id}`, {method:'DELETE'});
+    if (!resp.ok) { const d = await resp.json(); toast(d.error, 'error'); return; }
+    toast(`User "${username}" deleted`);
+    loadUsers();
+  } catch(e) { toast('Network error', 'error'); }
+}
+
+async function promptChangePassword(id, username) {
+  const pw = prompt(`New password for "${username}":`);
+  if (!pw) return;
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/users/${id}/password`, {
+      method:'PATCH', body: JSON.stringify({password: pw})
+    });
+    if (!resp.ok) { const d = await resp.json(); toast(d.error, 'error'); return; }
+    toast(`Password updated for "${username}"`);
+  } catch(e) { toast('Network error', 'error'); }
 }
 
 // ── Debug panel (activated by ?debug=1 in URL) ─────

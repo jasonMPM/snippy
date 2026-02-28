@@ -2,7 +2,7 @@
 
 A self-hosted URL shortener with QR code generation, click analytics, and tag-based link organization. Built on Python/Flask + SQLite. Runs as a Docker container — designed for Unraid but works anywhere Docker runs.
 
-Single-admin: one `ADMIN_PASSWORD` env var protects all write operations. No user accounts, no registration, no tokens to expire.
+Multi-user: admin account is seeded from env vars on startup. Admin can create/delete additional user accounts via the UI. Each user sees only their own links; admin sees all.
 
 ---
 
@@ -90,11 +90,14 @@ Structure and housekeeping for large link collections.
 - [ ] **Link health check** — background job that periodically fetches destination URLs and flags 4xx/5xx responses with a warning badge
 - [ ] **Custom redirect type** — choose 301 (permanent, browser-cached) vs 302 (temporary) per link; currently all links are 301
 
-### Phase 11 — Multi-user
-_(already planned)_
-- [ ] Per-user accounts with password — admin creates accounts directly, no self-registration
-- [ ] Each user sees only their own links; admin sees all
-- [ ] Simple session auth — same cookie approach as the current single-admin model
+### ✅ Phase 8 — Multi-user (Complete)
+- [x] Per-user accounts with password — admin creates accounts directly via Users tab, no self-registration
+- [x] Each user sees only their own links; admin sees all
+- [x] Admin dashboard for user management (create, delete, change password)
+- [x] `ADMIN_USERNAME` env var (default: `admin`) — admin account upserted from env vars on every startup
+- [x] Login form updated to username + password
+- [x] User badge in header showing logged-in username and role
+- [x] Existing links (pre-migration) remain visible to admin; new links are owned by the creating user
 
 ---
 
@@ -105,7 +108,8 @@ _(already planned)_
 | Variable | Description |
 |---|---|
 | `SECRET_KEY` | Long random string — signs session cookies |
-| `ADMIN_PASSWORD` | Password to access the dashboard |
+| `ADMIN_PASSWORD` | Password for the admin account |
+| `ADMIN_USERNAME` | Username for the admin account (default: `admin`) |
 
 Generate a strong `SECRET_KEY`:
 ```bash
@@ -223,9 +227,9 @@ All write endpoints require an active session (log in via the web UI first, or P
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/login` | — | Login with `{"password": "..."}`, sets session cookie |
+| POST | `/api/auth/login` | — | Login with `{"username": "...", "password": "..."}`, sets session cookie |
 | POST | `/api/auth/logout` | ✓ | Clear session |
-| GET | `/api/auth/me` | ✓ | Returns `{"authenticated": true}` |
+| GET | `/api/auth/me` | ✓ | Returns `{"authenticated": true, "username": "...", "is_admin": bool}` |
 
 ### Links
 
@@ -254,6 +258,15 @@ All write endpoints require an active session (log in via the web UI first, or P
 | GET | `/api/health` | — | Health check (`{"status":"ok"}`) |
 | GET | `/:code` | — | Redirect to destination URL |
 
+### Admin
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/admin/users` | Admin | List all users with link counts |
+| POST | `/api/admin/users` | Admin | Create user (`{username, password, is_admin}`) |
+| DELETE | `/api/admin/users/:id` | Admin | Delete user (cannot delete self) |
+| PATCH | `/api/admin/users/:id/password` | Admin | Change user password (`{password}`) |
+
 ---
 
 ## ⚙️ Environment Variables
@@ -265,7 +278,8 @@ All write endpoints require an active session (log in via the web UI first, or P
 | `PORT` | `5000` | Port Gunicorn listens on |
 | `DEBUG` | `false` | Flask debug mode (keep false in production) |
 | `SECRET_KEY` | *(none — required)* | Signs session cookies — use a long random string |
-| `ADMIN_PASSWORD` | *(none — required)* | Password for the dashboard |
+| `ADMIN_PASSWORD` | *(none — required)* | Password for the admin account — upserted on every startup |
+| `ADMIN_USERNAME` | `admin` | Username for the admin account |
 | `DB_PATH` | `/app/data/sniplink.db` | SQLite file location (inside Docker volume) |
 | `COOKIE_SECURE` | `false` | Set `true` only if Flask receives HTTPS directly (not behind a proxy) |
 
