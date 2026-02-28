@@ -422,8 +422,8 @@ def shorten():
         return jsonify({'error': 'URL is required'}), 400
     if not validate_url(long_url):
         return jsonify({'error': 'URL must start with http:// or https://'}), 400
-    if custom_code and not re.match(r'^[a-zA-Z0-9]{3,20}$', custom_code):
-        return jsonify({'error': 'Custom code must be 3–20 alphanumeric characters'}), 400
+    if custom_code and not re.match(r'^[a-zA-Z0-9]{1,20}$', custom_code):
+        return jsonify({'error': 'Custom code must be 1–20 alphanumeric characters'}), 400
 
     code = custom_code or generate_code(long_url)
 
@@ -870,7 +870,7 @@ def import_links():
             tags_str    = (row.get('tags') or '').strip()
             tag_names   = [t.strip() for t in tags_str.split(',') if t.strip()] if tags_str else []
 
-            if custom_code and not re.match(r'^[a-zA-Z0-9]{3,20}$', custom_code):
+            if custom_code and not re.match(r'^[a-zA-Z0-9]{1,20}$', custom_code):
                 errors.append(f'Row {i}: invalid code "{custom_code}"'); continue
 
             code = custom_code or generate_code(url)
