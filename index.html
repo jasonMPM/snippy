@@ -389,7 +389,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
     <div class="shorten-card">
       <div class="input-group">
         <input type="url" id="url-input" placeholder="https://your-long-url.com/goes/here" autocomplete="off" spellcheck="false">
-        <button class="btn-primary" id="shorten-btn"><span id="shorten-label">Snip it →</span></button>
+        <button class="btn-primary" id="shorten-btn"><span id="shorten-label">Knit Link →</span></button>
       </div>
       <div class="advanced-toggle" id="adv-toggle">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1056,7 +1056,7 @@ async function doShorten() {
     tagInputEl.value='';
     tagInputTags=[]; renderTagPills();
   } catch(e){toast('Network error','error');}
-  finally{btn.disabled=false;lbl.textContent='Snip it →';}
+  finally{btn.disabled=false;lbl.textContent='Knit Link →';}
 }
 
 function showResult(data) {
