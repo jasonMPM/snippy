@@ -1049,6 +1049,11 @@ async function doShorten() {
     const data = await resp.json();
     if(!resp.ok){toast(data.error||'Error','error');return;}
     showResult(data); toast('Link shortened!');
+    document.getElementById('url-input').value='';
+    document.getElementById('custom-code').value='';
+    document.getElementById('link-title').value='';
+    document.getElementById('link-expiry').value='';
+    tagInputEl.value='';
     tagInputTags=[]; renderTagPills();
   } catch(e){toast('Network error','error');}
   finally{btn.disabled=false;lbl.textContent='Snip it →';}
