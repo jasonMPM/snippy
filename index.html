@@ -730,7 +730,8 @@ function buildLinkItem(l) {
   item.id = `item-${l.code}`;
   const tagPills = (l.tags||[]).map(t=>`<span class="link-tag">${t.name}</span>`).join('');
   const expNote  = l.expires_at ? `<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)"> · exp ${l.expires_at.slice(0,10)}</span>`:'';
-  const canEdit  = loggedIn;
+  const canEdit      = loggedIn;
+  const canCopyImage = typeof ClipboardItem !== 'undefined' && !!navigator.clipboard?.write;
 
   item.innerHTML = `
     <div class="link-row" onclick="toggleExpand('${l.code}')">
@@ -762,7 +763,7 @@ function buildLinkItem(l) {
         </div>
         <div class="qr-thumb-btns">
           <a class="btn-sm" href="${l.qr_url}" download="qr-${l.code}.png" style="text-decoration:none;text-align:center">↓ Download</a>
-          <button class="btn-sm" onclick="copyQrToClipboard('${l.qr_url}')">⎘ Copy image</button>
+          ${canCopyImage?`<button class="btn-sm" onclick="copyQrToClipboard('${l.qr_url}')">⎘ Copy image</button>`:''}
           <button class="btn-sm" onclick="document.getElementById('qr-url-input').value='${l.short_url}';showView('qr')">✦ Customize</button>
         </div>
       </div>
