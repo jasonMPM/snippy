@@ -193,6 +193,10 @@ main { position:relative; z-index:1; }
 .link-original { font-family:var(--font-mono); font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .link-tags     { display:flex; gap:4px; flex-wrap:wrap; margin-top:3px; }
 .link-tag { background:rgba(var(--accent3-rgb),.1); border:1px solid rgba(var(--accent3-rgb),.25); color:var(--accent3-light); font-family:var(--font-mono); font-size:10px; padding:1px 6px; border-radius:3px; }
+.link-owner-badge { font-family:var(--font-mono); font-size:10px; color:var(--muted); white-space:nowrap; }
+.link-owner-btn { background:var(--surface3); border:1px solid var(--border); color:var(--muted); font-family:var(--font-mono); font-size:10px; padding:1px 7px; border-radius:4px; cursor:pointer; transition:all .2s; }
+.link-owner-btn:hover { color:var(--accent); border-color:rgba(var(--accent-rgb),.4); background:rgba(var(--accent-rgb),.07); }
+.user-filter-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(var(--accent-rgb),.06); border:1px solid rgba(var(--accent-rgb),.2); border-radius:8px; margin-bottom:14px; font-family:var(--font-mono); font-size:12px; color:var(--accent); }
 .ws-tag   { background:rgba(var(--accent-rgb),.08); border:1px solid rgba(var(--accent-rgb),.2); color:var(--accent); font-family:var(--font-mono); font-size:10px; padding:1px 6px; border-radius:3px; }
 .link-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .link-clicks { font-family:var(--font-mono); font-size:11px; color:var(--muted); white-space:nowrap; }
@@ -652,6 +656,7 @@ let loggedIn     = false;
 let currentUser  = null;
 let allTags      = [];
 let activeTag    = null;
+let activeUser   = null;
 let tagInputTags = [];
 let searchTimer  = null;
 let selectMode   = false;
@@ -684,7 +689,8 @@ function showView(name) {
   if (btn) btn.classList.add('active');
   document.getElementById(`view-${name}`)?.classList.add('active');
   if (name === 'dashboard') loadDashboard();
-  if (name === 'admin')     loadUsers();
+  else activeUser = null;
+  if (name === 'admin') loadUsers();
 }
 
 // ── Toast ──────────────────────────────────────────
@@ -893,8 +899,9 @@ function renderTagFilters() {
 async function loadLinks() {
   const q = document.getElementById('search-input').value.trim();
   let url = `${BASE}/api/links?per_page=50`;
-  if (q)         url += `&q=${encodeURIComponent(q)}`;
-  if (activeTag) url += `&tag=${encodeURIComponent(activeTag)}`;
+  if (q)          url += `&q=${encodeURIComponent(q)}`;
+  if (activeTag)  url += `&tag=${encodeURIComponent(activeTag)}`;
+  if (activeUser) url += `&user=${encodeURIComponent(activeUser)}`;
   try {
     const d = await (await authFetch(url)).json();
     renderLinks(d.links || []);
@@ -907,10 +914,21 @@ document.getElementById('search-input').addEventListener('input', () => {
   clearTimeout(searchTimer); searchTimer = setTimeout(loadLinks, 300);
 });
 
+function filterByUser(username) {
+  activeUser = username || null;
+  loadLinks();
+}
+
 function renderLinks(links) {
   const container = document.getElementById('links-list');
-  if (!links.length) { container.innerHTML='<div class="empty-state"><div class="empty-icon">🔗</div><p>No links found</p></div>'; return; }
-  container.innerHTML='';
+  container.innerHTML = '';
+  if (activeUser) {
+    const bar = document.createElement('div');
+    bar.className = 'user-filter-bar';
+    bar.innerHTML = `Showing links by <strong>@${escHtml(activeUser)}</strong> &nbsp;<button class="btn-sm" onclick="filterByUser(null)">✕ Clear filter</button>`;
+    container.appendChild(bar);
+  }
+  if (!links.length) { container.insertAdjacentHTML('beforeend','<div class="empty-state"><div class="empty-icon">🔗</div><p>No links found</p></div>'); return; }
   links.forEach(l => container.appendChild(buildLinkItem(l)));
 }
 
@@ -922,6 +940,10 @@ function buildLinkItem(l) {
   const expNote  = l.expires_at ? `<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)"> · exp ${l.expires_at.slice(0,10)}</span>`:'';
   const canEdit      = loggedIn;
   const canCopyImage = typeof ClipboardItem !== 'undefined' && !!navigator.clipboard?.write;
+  const isAdmin      = currentUser && currentUser.is_admin;
+  const ownerBadge   = (isAdmin && l.created_by)
+    ? `<button class="link-owner-btn" onclick="event.stopPropagation();filterByUser('${escHtml(l.created_by)}')" title="Filter by this user">@${escHtml(l.created_by)}</button>`
+    : '';
 
   item.innerHTML = `
     <div class="link-row" onclick="toggleExpand('${l.code}')">
@@ -940,6 +962,7 @@ function buildLinkItem(l) {
         ${tagPills?`<div class="link-tags">${tagPills}</div>`:''}
       </div>
       <div class="link-meta">
+        ${ownerBadge}
         <div class="link-clicks"><strong>${l.clicks}</strong> clicks${expNote}</div>
         <button class="copy-inline" title="Copy short URL"
                 onclick="event.stopPropagation();copyToClipboard('${l.short_url}')">copy</button>
@@ -961,6 +984,7 @@ function buildLinkItem(l) {
         <button class="btn-sm" onclick="copyToClipboard('${l.short_url}')">Copy link</button>
         ${canEdit?`<button class="btn-sm" onclick="toggleEdit('${l.code}')">✎ Edit</button>`:''}
         ${canEdit?`<button class="btn-sm danger" onclick="deleteLink('${l.code}')">✕ Delete</button>`:''}
+        ${isAdmin && l.created_by ? `<span class="link-owner-badge">by <button class="link-owner-btn" onclick="filterByUser('${escHtml(l.created_by)}')" title="Show all links by this user">@${escHtml(l.created_by)}</button></span>` : ''}
       </div>
       ${canEdit?`
       <div class="edit-form" id="edit-${l.code}">

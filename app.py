@@ -375,19 +375,21 @@ def set_link_tags(conn, link_id, tag_names):
         conn.execute('INSERT OR IGNORE INTO link_tags (link_id,tag_id) VALUES (?,?)', (link_id, tid))
 
 def format_link(row, conn):
+    owner = conn.execute('SELECT username FROM users WHERE id=?', (row['user_id'],)).fetchone()
     return {
-        'id':        row['id'],
-        'code':      row['code'],
-        'long_url':  row['long_url'],
-        'title':     row['title'],
+        'id':         row['id'],
+        'code':       row['code'],
+        'long_url':   row['long_url'],
+        'title':      row['title'],
         'created_at': row['created_at'],
         'expires_at': row['expires_at'],
-        'clicks':    row['clicks'],
-        'is_active': row['is_active'],
-        'is_pinned': row['is_pinned'],
-        'short_url': f"{BASE_URL}/{row['code']}",
-        'qr_url':    f"{BASE_URL}/api/qr/{row['code']}",
-        'tags':      get_link_tags(conn, row['id']),
+        'clicks':     row['clicks'],
+        'is_active':  row['is_active'],
+        'is_pinned':  row['is_pinned'],
+        'short_url':  f"{BASE_URL}/{row['code']}",
+        'qr_url':     f"{BASE_URL}/api/qr/{row['code']}",
+        'tags':       get_link_tags(conn, row['id']),
+        'created_by': owner['username'] if owner else None,
     }
 
 
@@ -503,13 +505,14 @@ def shorten():
 @app.route('/api/links', methods=['GET'])
 @login_required
 def list_links():
-    page       = int(request.args.get('page', 1))
-    per_page   = min(int(request.args.get('per_page', 20)), 100)
-    offset     = (page - 1) * per_page
-    search     = (request.args.get('q') or '').strip()
-    tag_filter = (request.args.get('tag') or '').strip().lower()
-    is_admin   = session.get('is_admin', False)
-    user_id    = session.get('user_id')
+    page        = int(request.args.get('page', 1))
+    per_page    = min(int(request.args.get('per_page', 20)), 100)
+    offset      = (page - 1) * per_page
+    search      = (request.args.get('q') or '').strip()
+    tag_filter  = (request.args.get('tag') or '').strip().lower()
+    user_filter = (request.args.get('user') or '').strip()
+    is_admin    = session.get('is_admin', False)
+    user_id     = session.get('user_id')
 
     where_clauses = ['l.is_active=1']
     params = []
@@ -518,6 +521,12 @@ def list_links():
     if not is_admin:
         where_clauses.append('l.user_id=?')
         params.append(user_id)
+    elif user_filter:
+        # Admins can filter down to a specific user's links
+        where_clauses.append(
+            'l.user_id=(SELECT id FROM users WHERE username=?)'
+        )
+        params.append(user_filter)
 
     if search:
         where_clauses.append('(l.code LIKE ? OR l.long_url LIKE ? OR l.title LIKE ?)')
