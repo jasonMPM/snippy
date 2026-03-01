@@ -24,19 +24,15 @@ A self-hosted URL shortener with QR code generation, deep click analytics, and t
 | 6 | **Deployment Portability** | `APP_NAME` & `BASE_URL` env vars, `/api/config` endpoint, all hardcoded domains removed |
 | 7 | **UI Polish** | Teal/blue accent palette, gradient hero & buttons, four switchable colour themes |
 | 8 | **Multi-user** | Per-user accounts, admin user-management panel, `ADMIN_USERNAME` env var, username + password login |
-| 9 | **Analytics Deep-Dive** | Geographic breakdown (country via `CF-IPCountry` + ip-api.com fallback), hourly 7×24 activity heatmap, dashboard-wide 30-day click chart, per-link raw click-event CSV export |
-
-### Additional improvements (post-M9)
-
-- **Header icon** — `qk-ico.png` displayed left of the logo text; accent squares automatically recolour to match the active theme via `mix-blend-mode: hue`
-- **Link owner attribution** — every link row shows a clickable `@username` badge (admin only); clicking it scopes the dashboard to that user's links with one tap, making abuse investigation and account cleanup faster
+| 9 | **Analytics Deep-Dive** | Geographic breakdown (country via `CF-IPCountry` + ip-api.com fallback), hourly 7×24 activity heatmap, dashboard-wide 30-day click chart, per-link raw click-event CSV export; header icon (`qk-ico.png`) with theme-aware hue tinting; clickable `@username` owner badge on every link row (admin only) for user-scoped filtering |
+| 10 | **Landing Page & Contact Portal** | Marketing landing page at `/`; app moved to `/app`; contact form modal on landing (Get Started + Notify Me buttons); SQLite-backed `messages` table; admin PORTAL inbox in app header with unread badge, message viewing, and delete |
 
 ### Upcoming
 
 | # | Milestone | Planned features |
 |---|---|---|
-| 10 | **Power Features** | API key auth, password-protected links, UTM parameter builder, custom 404/expired pages |
-| 11 | **Link Organisation** | Folders/groups, duplicate link, link health checks, per-link redirect type (301 vs 302) |
+| 11 | **Power Features** | API key auth, password-protected links, UTM parameter builder, custom 404/expired pages |
+| 12 | **Link Organisation** | Folders/groups, duplicate link, link health checks, per-link redirect type (301 vs 302) |
 
 ---
 
@@ -209,7 +205,8 @@ Then click **Force Update** on the container in the Docker tab.
 ```
 qrknit/
 ├── app.py              # Flask backend — all routes and logic
-├── index.html          # Single-page frontend (inline CSS + JS, served by Flask)
+├── index.html          # App SPA (inline CSS + JS, served at /app)
+├── landing.html        # Marketing landing page (served at /)
 ├── static/
 │   └── qk-ico.png      # App icon (served at /static/qk-ico.png)
 ├── requirements.txt    # Python dependencies
@@ -269,6 +266,15 @@ All write endpoints require an active session (log in via the web UI or `POST /a
 | POST | `/api/admin/users` | Admin | Create user — `{username, password, is_admin}` |
 | DELETE | `/api/admin/users/:id` | Admin | Delete user (cannot delete self) |
 | PATCH | `/api/admin/users/:id/password` | Admin | Change user password — `{password}` |
+| GET | `/api/admin/messages` | Admin | List all contact/portal messages, newest first |
+| DELETE | `/api/admin/messages/:id` | Admin | Delete a message |
+| PATCH | `/api/admin/messages/:id/read` | Admin | Mark a message as read |
+
+### Contact
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/contact` | — | Submit a contact message — `{name, email, subject, body}` |
 
 ---
 
