@@ -1,9 +1,10 @@
 # QRknit — URL Shortener & QR Code Generator
 
-A self-hosted URL shortener with QR code generation, click analytics, and tag-based link organization. Built on Python/Flask + SQLite. Runs as a single Docker container — designed for Unraid but works anywhere Docker runs.
+A self-hosted URL shortener with QR code generation, deep click analytics, and tag-based link organization. Built on Python/Flask + SQLite. Runs as a single Docker container — designed for Unraid but works anywhere Docker runs.
 
 - **Multi-user** — admin account seeded from env vars; admin can create/delete additional accounts via the UI
-- **Per-user isolation** — each user sees only their own links; admin sees all
+- **Per-user isolation** — each user sees only their own links; admin sees all with owner attribution and user-scoped filtering
+- **Deep analytics** — daily charts, referrer/device/browser/country breakdowns, hourly 7×24 heatmap, raw click CSV export
 - **Zero external dependencies** — SQLite, no Redis, no Postgres, no message queue
 - **Single-file frontend** — all CSS and JS are inline; no build step, no node_modules
 
@@ -21,9 +22,14 @@ A self-hosted URL shortener with QR code generation, click analytics, and tag-ba
 | 4 | **QR & Bulk Tools** | QR logo overlay, dot-shape presets, bulk delete/tag/expire, CSV import & export |
 | 5 | **UX Improvements** | Pinned links, one-click copy, auto-fetch page title, inline QR thumbnail, copy QR to clipboard |
 | 6 | **Deployment Portability** | `APP_NAME` & `BASE_URL` env vars, `/api/config` endpoint, all hardcoded domains removed |
-| 7 | **UI Polish** | Teal/blue accent palette, gradient hero & buttons, improved text contrast |
+| 7 | **UI Polish** | Teal/blue accent palette, gradient hero & buttons, four switchable colour themes |
 | 8 | **Multi-user** | Per-user accounts, admin user-management panel, `ADMIN_USERNAME` env var, username + password login |
-| 9 | **Analytics Deep-Dive** | Geographic breakdown (country via CF-IPCountry + ip-api.com), hourly 7×24 heatmap, dashboard-wide 30-day click chart, per-link raw click-event CSV export |
+| 9 | **Analytics Deep-Dive** | Geographic breakdown (country via `CF-IPCountry` + ip-api.com fallback), hourly 7×24 activity heatmap, dashboard-wide 30-day click chart, per-link raw click-event CSV export |
+
+### Additional improvements (post-M9)
+
+- **Header icon** — `qk-ico.png` displayed left of the logo text; accent squares automatically recolour to match the active theme via `mix-blend-mode: hue`
+- **Link owner attribution** — every link row shows a clickable `@username` badge (admin only); clicking it scopes the dashboard to that user's links with one tap, making abuse investigation and account cleanup faster
 
 ### Upcoming
 
@@ -154,11 +160,13 @@ Click **Apply**.
 - Point your DNS A record to your Unraid IP
 - Enable **Always Use HTTPS** in Cloudflare dashboard (SSL/TLS → Edge Certificates)
 - Keep `COOKIE_SECURE=false` — Cloudflare terminates TLS before Flask sees the request
+- `CF-IPCountry` header is forwarded automatically — no extra configuration needed for geographic analytics
 
 **Nginx Proxy Manager:**
 - Add a proxy host: your domain → `unraid-lan-ip:5000`
 - Issue a Let's Encrypt certificate on the SSL tab
 - Keep `COOKIE_SECURE=false` — same reason as Cloudflare
+- Country detection falls back to ip-api.com (free, no key required, <45 req/min)
 
 **Step 5 — Verify**
 ```bash
@@ -202,6 +210,8 @@ Then click **Force Update** on the container in the Docker tab.
 qrknit/
 ├── app.py              # Flask backend — all routes and logic
 ├── index.html          # Single-page frontend (inline CSS + JS, served by Flask)
+├── static/
+│   └── qk-ico.png      # App icon (served at /static/qk-ico.png)
 ├── requirements.txt    # Python dependencies
 ├── Dockerfile          # Multi-stage Docker build
 ├── docker-compose.yml  # For non-Unraid deployments
@@ -228,17 +238,18 @@ All write endpoints require an active session (log in via the web UI or `POST /a
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | POST | `/api/shorten` | ✓ | Create a short link |
-| GET | `/api/links` | ✓ | List links — supports `?q=`, `?tag=`, `?page=`, `?per_page=` |
-| GET | `/api/links/:code` | ✓ | Link detail |
+| GET | `/api/links` | ✓ | List links — supports `?q=`, `?tag=`, `?page=`, `?per_page=`; admin also accepts `?user=<username>` to scope to one user |
+| GET | `/api/links/:code` | ✓ | Link detail — includes `created_by` username |
 | PATCH | `/api/links/:code` | ✓ | Edit link — `url`, `title`, `expires_at`, `tags`, `is_pinned` |
 | DELETE | `/api/links/:code` | ✓ | Delete link |
-| GET | `/api/links/:code/analytics` | ✓ | Click analytics — supports `?days=7\|30\|90` |
+| GET | `/api/links/:code/analytics` | ✓ | Click analytics — supports `?days=7\|30\|90`; returns `daily`, `referrers`, `devices`, `browsers`, `countries`, and `heatmap` (7×24 array) |
+| GET | `/api/links/:code/clicks/export` | ✓ | Download raw click events as CSV — columns: `timestamp`, `referrer`, `device`, `browser`, `country` |
 
 ### Utilities
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/api/stats` | ✓ | Total links, total clicks, clicks/7d, top links |
+| GET | `/api/stats` | ✓ | Total links, total clicks, clicks/7d, top 5 links, and a 30-day `daily` click array for the dashboard chart |
 | GET | `/api/tags` | ✓ | All tags with link counts |
 | GET | `/api/fetch-title` | ✓ | Server-side page title fetch — `?url=`. Returns `{"title":"…"}` |
 | GET | `/api/qr/:code` | — | QR PNG for a short link |
