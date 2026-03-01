@@ -101,6 +101,8 @@ def init_db():
         for migration in [
             "ALTER TABLE links ADD COLUMN is_pinned INTEGER DEFAULT 0",
             "ALTER TABLE links ADD COLUMN user_id INTEGER REFERENCES users(id)",
+            "ALTER TABLE clicks ADD COLUMN ip_address TEXT",
+            "ALTER TABLE clicks ADD COLUMN country TEXT",
         ]:
             try:
                 conn.execute(migration)
@@ -311,6 +313,50 @@ def parse_referrer(ref):
     if 'youtube' in r:                                     return 'YouTube'
     if 'instagram' in r:                                   return 'Instagram'
     return 'Other'
+
+def get_client_ip():
+    """Return the real client IP, honouring X-Forwarded-For from trusted proxies."""
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.remote_addr or ''
+
+def get_country_for_request():
+    """Return a 2-letter ISO country code for the current request.
+
+    Priority:
+    1. CF-IPCountry header (Cloudflare — zero-latency, most reliable)
+    2. ip-api.com free JSON API (1-second timeout, fails gracefully)
+    Returns 'XX' if the IP is private/loopback, 'Unknown' on any failure.
+    """
+    import urllib.request as _ureq, json as _json
+
+    cf = request.headers.get('CF-IPCountry', '').strip().upper()
+    if cf and len(cf) == 2 and cf.isalpha() and cf != 'XX':
+        return cf
+
+    ip = get_client_ip()
+    if not ip or ip in ('127.0.0.1', '::1'):
+        return 'XX'
+    # Skip RFC-1918 / loopback ranges — no point querying for private IPs
+    try:
+        import ipaddress
+        parsed = ipaddress.ip_address(ip)
+        if parsed.is_private or parsed.is_loopback or parsed.is_link_local:
+            return 'XX'
+    except ValueError:
+        pass
+    try:
+        req = _ureq.Request(
+            f'http://ip-api.com/json/{ip}?fields=countryCode',
+            headers={'User-Agent': 'QRknit/1.0'}
+        )
+        with _ureq.urlopen(req, timeout=1) as resp:
+            data = _json.loads(resp.read())
+        code = data.get('countryCode', '')
+        return code if code else 'Unknown'
+    except Exception:
+        return 'Unknown'
 
 def get_link_tags(conn, link_id):
     rows = conn.execute(
@@ -601,12 +647,71 @@ def link_analytics(code):
         devices  = [{'device':k,'count':v}  for k,v in sorted(devices.items(),  key=lambda x:-x[1])]
         browsers = [{'browser':k,'count':v} for k,v in sorted(browsers.items(), key=lambda x:-x[1])]
 
+        # Hourly heatmap: 7 days-of-week × 24 hours
+        # SQLite strftime('%w') returns 0=Sunday … 6=Saturday; we map to 0=Monday … 6=Sunday
+        hourly_rows = conn.execute("""
+            SELECT CAST(strftime('%w', clicked_at) AS INTEGER) as dow,
+                   CAST(strftime('%H', clicked_at) AS INTEGER) as hr,
+                   COUNT(*) as count
+            FROM clicks WHERE link_id=? AND clicked_at>=?
+            GROUP BY dow, hr
+        """, (link_id, since)).fetchall()
+        # heatmap[day_of_week 0=Mon][hour 0-23]
+        heatmap = [[0] * 24 for _ in range(7)]
+        for r in hourly_rows:
+            mon_dow = (r['dow'] - 1) % 7  # 0=Sun→6, 1=Mon→0, …
+            heatmap[mon_dow][r['hr']] = r['count']
+
+        # Geographic breakdown
+        country_rows = conn.execute("""
+            SELECT COALESCE(NULLIF(country,''),'Unknown') as country, COUNT(*) as count
+            FROM clicks WHERE link_id=? AND clicked_at>=?
+            GROUP BY country ORDER BY count DESC LIMIT 20
+        """, (link_id, since)).fetchall()
+        countries = [{'country': r['country'], 'count': r['count']} for r in country_rows]
+
     return jsonify({
         'code': code, 'days': days,
         'total_clicks':  link['clicks'],
         'period_clicks': sum(d['clicks'] for d in daily),
         'daily': daily, 'referrers': referrers, 'devices': devices, 'browsers': browsers,
+        'heatmap': heatmap, 'countries': countries,
     })
+
+
+# ─────────────────────────────────────────────
+# Click-event CSV export
+# ─────────────────────────────────────────────
+
+@app.route('/api/links/<code>/clicks/export')
+@login_required
+def export_clicks(code):
+    with get_db() as conn:
+        link = conn.execute('SELECT * FROM links WHERE code=?', (code,)).fetchone()
+        if not link or not _can_access_link(link):
+            return jsonify({'error': 'Not found'}), 404
+        rows = conn.execute(
+            'SELECT clicked_at, referrer, user_agent, country FROM clicks '
+            'WHERE link_id=? ORDER BY clicked_at DESC',
+            (link['id'],)
+        ).fetchall()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['timestamp', 'referrer', 'device', 'browser', 'country'])
+    for row in rows:
+        ua = row['user_agent'] or ''
+        writer.writerow([
+            row['clicked_at'],
+            row['referrer'] or '',
+            parse_device(ua),
+            parse_browser(ua),
+            row['country'] or '',
+        ])
+    return Response(
+        buf.getvalue().encode('utf-8'),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="clicks-{code}.csv"'}
+    )
 
 
 # ─────────────────────────────────────────────
@@ -665,24 +770,64 @@ def list_tags():
 @app.route('/api/stats')
 @login_required
 def stats():
+    is_admin = session.get('is_admin', False)
+    user_id  = session.get('user_id')
     with get_db() as conn:
-        total_links  = conn.execute('SELECT COUNT(*) FROM links WHERE is_active=1').fetchone()[0]
-        total_clicks = conn.execute('SELECT COALESCE(SUM(clicks),0) FROM links WHERE is_active=1').fetchone()[0]
-        since_7d     = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).isoformat()
-        clicks_7d    = conn.execute(
-            'SELECT COUNT(*) FROM clicks c JOIN links l ON c.link_id=l.id '
-            'WHERE c.clicked_at>=? AND l.is_active=1', (since_7d,)
-        ).fetchone()[0]
-        top_links = conn.execute(
-            'SELECT code, long_url, title, clicks FROM links WHERE is_active=1 '
-            'ORDER BY clicks DESC LIMIT 5'
-        ).fetchall()
+        if is_admin:
+            total_links  = conn.execute('SELECT COUNT(*) FROM links WHERE is_active=1').fetchone()[0]
+            total_clicks = conn.execute('SELECT COALESCE(SUM(clicks),0) FROM links WHERE is_active=1').fetchone()[0]
+        else:
+            total_links  = conn.execute('SELECT COUNT(*) FROM links WHERE is_active=1 AND user_id=?', (user_id,)).fetchone()[0]
+            total_clicks = conn.execute('SELECT COALESCE(SUM(clicks),0) FROM links WHERE is_active=1 AND user_id=?', (user_id,)).fetchone()[0]
+
+        since_7d  = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).isoformat()
+        since_30d = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)).isoformat()
+
+        if is_admin:
+            clicks_7d = conn.execute(
+                'SELECT COUNT(*) FROM clicks c JOIN links l ON c.link_id=l.id '
+                'WHERE c.clicked_at>=? AND l.is_active=1', (since_7d,)
+            ).fetchone()[0]
+            top_links = conn.execute(
+                'SELECT code, long_url, title, clicks FROM links WHERE is_active=1 '
+                'ORDER BY clicks DESC LIMIT 5'
+            ).fetchall()
+            daily_rows = conn.execute("""
+                SELECT substr(c.clicked_at,1,10) as day, COUNT(*) as count
+                FROM clicks c JOIN links l ON c.link_id=l.id
+                WHERE c.clicked_at>=? AND l.is_active=1
+                GROUP BY day ORDER BY day
+            """, (since_30d,)).fetchall()
+        else:
+            clicks_7d = conn.execute(
+                'SELECT COUNT(*) FROM clicks c JOIN links l ON c.link_id=l.id '
+                'WHERE c.clicked_at>=? AND l.is_active=1 AND l.user_id=?', (since_7d, user_id)
+            ).fetchone()[0]
+            top_links = conn.execute(
+                'SELECT code, long_url, title, clicks FROM links WHERE is_active=1 AND user_id=? '
+                'ORDER BY clicks DESC LIMIT 5', (user_id,)
+            ).fetchall()
+            daily_rows = conn.execute("""
+                SELECT substr(c.clicked_at,1,10) as day, COUNT(*) as count
+                FROM clicks c JOIN links l ON c.link_id=l.id
+                WHERE c.clicked_at>=? AND l.is_active=1 AND l.user_id=?
+                GROUP BY day ORDER BY day
+            """, (since_30d, user_id)).fetchall()
+
+        daily_map = {r['day']: r['count'] for r in daily_rows}
+        daily = [
+            {'date': (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=29-i)).strftime('%Y-%m-%d'), 'clicks': 0}
+            for i in range(30)
+        ]
+        for d in daily:
+            d['clicks'] = daily_map.get(d['date'], 0)
 
     return jsonify({
         'total_links':  total_links,
         'total_clicks': total_clicks,
         'clicks_7d':    clicks_7d,
         'top_links':    [dict(r) for r in top_links],
+        'daily':        daily,
     })
 
 
@@ -975,10 +1120,13 @@ def redirect_link(code):
             return redirect('/?error=not_found')
         if link['expires_at'] and link['expires_at'] < datetime.now(timezone.utc).replace(tzinfo=None).isoformat():
             return redirect('/?error=expired')
+        country    = get_country_for_request()
+        client_ip  = get_client_ip()
         conn.execute(
-            'INSERT INTO clicks (link_id,clicked_at,referrer,user_agent) VALUES (?,?,?,?)',
+            'INSERT INTO clicks (link_id,clicked_at,referrer,user_agent,ip_address,country) VALUES (?,?,?,?,?,?)',
             (link['id'], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-             request.referrer, request.headers.get('User-Agent','')[:500])
+             request.referrer, request.headers.get('User-Agent','')[:500],
+             client_ip[:45], country)
         )
         conn.execute('UPDATE links SET clicks=clicks+1 WHERE id=?', (link['id'],))
         return redirect(link['long_url'], code=301)

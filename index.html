@@ -226,6 +226,21 @@ main { position:relative; z-index:1; }
 .breakdown-bar { height:100%; border-radius:2px; background:var(--accent); transition:width .4s; }
 .breakdown-count { font-family:var(--font-mono); font-size:10px; color:var(--muted); min-width:24px; text-align:right; }
 
+/* ── DASHBOARD CHART ── */
+.dash-chart-wrap { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; margin-bottom:22px; }
+.dash-chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.dash-chart-title  { font-family:var(--font-mono); font-size:11px; color:var(--muted); letter-spacing:.08em; }
+.dash-chart-total  { font-family:var(--font-mono); font-size:11px; color:var(--muted); }
+.dash-chart-canvas { width:100%; display:block; }
+
+/* ── HOURLY HEATMAP ── */
+.heatmap-wrap { margin-top:14px; background:var(--surface3); border:1px solid var(--border); border-radius:10px; padding:12px; }
+.heatmap-title { font-family:var(--font-mono); font-size:10px; color:var(--muted); letter-spacing:.08em; margin-bottom:8px; }
+.heatmap-grid { display:grid; grid-template-columns:28px repeat(24,1fr); gap:2px; }
+.heatmap-hour-label { font-family:var(--font-mono); font-size:7px; color:var(--muted); text-align:center; line-height:12px; }
+.heatmap-day-label  { font-family:var(--font-mono); font-size:8px; color:var(--muted); display:flex; align-items:center; padding-right:4px; }
+.heatmap-cell { height:12px; border-radius:2px; }
+
 /* ── SECTION HEAD ── */
 .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
 .section-title { font-family:var(--font-head); font-size:18px; font-weight:700; }
@@ -488,6 +503,14 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
     <div class="stat-card"><div class="stat-value" id="stat-clicks">—</div><div class="stat-label">TOTAL CLICKS</div></div>
     <div class="stat-card"><div class="stat-value" id="stat-7d">—</div><div class="stat-label">CLICKS / 7D</div></div>
     <div class="stat-card"><div class="stat-value" id="stat-avg">—</div><div class="stat-label">AVG / LINK</div></div>
+  </div>
+
+  <div class="dash-chart-wrap" id="dash-chart-wrap" style="display:none">
+    <div class="dash-chart-header">
+      <div class="dash-chart-title">CLICKS — LAST 30 DAYS</div>
+      <div class="dash-chart-total" id="dash-chart-total"></div>
+    </div>
+    <canvas class="dash-chart-canvas" id="dash-chart" height="60"></canvas>
   </div>
 
   <div class="toolbar">
@@ -809,7 +832,38 @@ async function loadStats() {
     document.getElementById('stat-clicks').textContent = d.total_clicks.toLocaleString();
     document.getElementById('stat-7d').textContent     = d.clicks_7d.toLocaleString();
     document.getElementById('stat-avg').textContent    = d.total_links>0 ? (d.total_clicks/d.total_links).toFixed(1) : '0';
+    if (d.daily && d.daily.length) renderDashChart(d.daily);
   } catch(e) {}
+}
+
+function renderDashChart(daily) {
+  const wrap = document.getElementById('dash-chart-wrap');
+  const canvas = document.getElementById('dash-chart');
+  if (!wrap || !canvas) return;
+  const total30 = daily.reduce((s,x)=>s+x.clicks,0);
+  document.getElementById('dash-chart-total').textContent = total30.toLocaleString() + ' clicks';
+  wrap.style.display = total30 > 0 ? '' : 'none';
+  if (total30 === 0) return;
+  requestAnimationFrame(() => {
+    const dpr = window.devicePixelRatio || 1;
+    const W   = canvas.offsetWidth, H = 60;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const n    = daily.length;
+    const max  = Math.max(...daily.map(x => x.clicks), 1);
+    const barW = Math.max(2, (W / n) - 2);
+    const gap  = (W - barW * n) / (n - 1 || 1);
+    const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '0,184,212';
+    daily.forEach((pt, i) => {
+      const x = i * (barW + gap), bH = (pt.clicks / max) * (H - 10), y = H - bH - 2;
+      ctx.fillStyle = `rgba(${accentRgb},${pt.clicks > 0 ? .75 : .12})`;
+      ctx.beginPath(); ctx.roundRect(x, y, barW, bH + 2, [2, 2, 0, 0]); ctx.fill();
+    });
+    ctx.fillStyle = 'rgba(107,107,128,.8)'; ctx.font = '9px "Share Tech Mono"';
+    ctx.textAlign = 'left';  ctx.fillText(daily[0].date.slice(5), 0, H);
+    ctx.textAlign = 'right'; ctx.fillText(daily[daily.length-1].date.slice(5), W, H);
+  });
 }
 
 async function loadTags() {
@@ -921,10 +975,13 @@ function buildLinkItem(l) {
       <div class="analytics-wrap" id="analytics-${l.code}">
         <div class="analytics-header">
           <div class="analytics-title">CLICK ANALYTICS</div>
-          <div class="analytics-days">
-            <button class="day-btn active" onclick="loadAnalytics('${l.code}',7,this)">7d</button>
-            <button class="day-btn" onclick="loadAnalytics('${l.code}',30,this)">30d</button>
-            <button class="day-btn" onclick="loadAnalytics('${l.code}',90,this)">90d</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="analytics-days">
+              <button class="day-btn active" onclick="loadAnalytics('${l.code}',7,this)">7d</button>
+              <button class="day-btn" onclick="loadAnalytics('${l.code}',30,this)">30d</button>
+              <button class="day-btn" onclick="loadAnalytics('${l.code}',90,this)">90d</button>
+            </div>
+            <button class="btn-sm" onclick="exportClickCSV('${l.code}')" title="Export raw click events as CSV">↓ Clicks CSV</button>
           </div>
         </div>
         <div id="analytics-content-${l.code}"><div style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">Expand to load analytics</div></div>
@@ -1072,36 +1129,79 @@ async function loadAnalytics(code, days, btnEl) {
 function renderAnalytics(code, d) {
   const container = document.getElementById(`analytics-content-${code}`);
   const chartId   = `chart-${code}`;
+  const heatId    = `heat-${code}`;
+
+  // Build country rows HTML (only if we have country data)
+  const hasCountries = d.countries && d.countries.length > 0;
+  const countryCard = hasCountries
+    ? `<div class="breakdown-card"><h5>COUNTRIES</h5>${renderBreakdown(d.countries.map(r=>({label:r.country,count:r.count})))}</div>`
+    : '';
+
   container.innerHTML = `
     <div class="chart-wrap"><canvas class="chart-canvas" id="${chartId}" height="90"></canvas></div>
-    <div class="breakdown-grid">
+    <div class="breakdown-grid" style="grid-template-columns:${hasCountries?'1fr 1fr 1fr 1fr':'1fr 1fr 1fr'}">
       <div class="breakdown-card"><h5>REFERRERS</h5>${renderBreakdown(d.referrers.map(r=>({label:r.source,count:r.count})))}</div>
       <div class="breakdown-card"><h5>DEVICES</h5>${renderBreakdown(d.devices.map(r=>({label:r.device,count:r.count})))}</div>
       <div class="breakdown-card"><h5>BROWSERS</h5>${renderBreakdown(d.browsers.map(r=>({label:r.browser,count:r.count})))}</div>
-    </div>`;
+      ${countryCard}
+    </div>
+    <div class="heatmap-wrap" id="${heatId}"></div>`;
+
   requestAnimationFrame(() => {
+    // Daily bar chart
     const canvas = document.getElementById(chartId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio||1;
-    const W   = canvas.offsetWidth, H = 90;
-    canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
-    const data = d.daily, n = data.length;
-    const max  = Math.max(...data.map(x=>x.clicks),1);
-    const barW = Math.max(2,(W/n)-2);
-    const gap  = (W-barW*n)/(n-1||1);
-    const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim()||'0,184,212';
-    data.forEach((pt,i) => {
-      const x = i*(barW+gap), bH = (pt.clicks/max)*(H-14), y = H-bH-2;
-      ctx.fillStyle = `rgba(${accentRgb},${pt.clicks>0?.8:.15})`;
-      ctx.beginPath(); ctx.roundRect(x,y,barW,bH+2,[2,2,0,0]); ctx.fill();
-    });
-    ctx.fillStyle='rgba(107,107,128,.8)'; ctx.font=`10px "Share Tech Mono"`;
-    if (data.length>0) {
-      ctx.textAlign='left';   ctx.fillText(data[0].date.slice(5),0,H);
-      ctx.textAlign='right';  ctx.fillText(data[data.length-1].date.slice(5),W,H);
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio||1;
+      const W   = canvas.offsetWidth, H = 90;
+      canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
+      const data = d.daily, n = data.length;
+      const max  = Math.max(...data.map(x=>x.clicks),1);
+      const barW = Math.max(2,(W/n)-2);
+      const gap  = (W-barW*n)/(n-1||1);
+      const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim()||'0,184,212';
+      data.forEach((pt,i) => {
+        const x = i*(barW+gap), bH = (pt.clicks/max)*(H-14), y = H-bH-2;
+        ctx.fillStyle = `rgba(${accentRgb},${pt.clicks>0?.8:.15})`;
+        ctx.beginPath(); ctx.roundRect(x,y,barW,bH+2,[2,2,0,0]); ctx.fill();
+      });
+      ctx.fillStyle='rgba(107,107,128,.8)'; ctx.font=`10px "Share Tech Mono"`;
+      if (data.length>0) {
+        ctx.textAlign='left';   ctx.fillText(data[0].date.slice(5),0,H);
+        ctx.textAlign='right';  ctx.fillText(data[data.length-1].date.slice(5),W,H);
+      }
     }
+    // Hourly heatmap
+    if (d.heatmap) renderHeatmap(heatId, d.heatmap);
   });
+}
+
+function renderHeatmap(containerId, heatmap) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const days  = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const hours = Array.from({length:24},(_,i)=>i);
+  const maxVal = Math.max(...heatmap.flat(), 1);
+  const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '0,184,212';
+  const totalHeat = heatmap.flat().reduce((s,v)=>s+v,0);
+  if (totalHeat === 0) { el.style.display='none'; return; }
+
+  let html = '<div class="heatmap-title">HOURLY ACTIVITY (LOCAL TIME)</div><div class="heatmap-grid">';
+  // Header row: blank + 24 hour labels
+  html += '<div></div>';
+  hours.forEach(h => { html += `<div class="heatmap-hour-label">${h%6===0?h:''}</div>`; });
+  // Data rows
+  days.forEach((day, di) => {
+    html += `<div class="heatmap-day-label">${day}</div>`;
+    hours.forEach(h => {
+      const v   = heatmap[di][h];
+      const pct = v / maxVal;
+      const opacity = v > 0 ? (0.15 + pct * 0.85).toFixed(2) : '0.06';
+      html += `<div class="heatmap-cell" style="background:rgba(${accentRgb},${opacity})" title="${day} ${h}:00 — ${v} click${v!==1?'s':''}"></div>`;
+    });
+  });
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function renderBreakdown(rows) {
@@ -1113,6 +1213,18 @@ function renderBreakdown(rows) {
       <div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${Math.round((r.count/max)*100)}%"></div></div>
       <div class="breakdown-count">${r.count}</div>
     </div>`).join('');
+}
+
+async function exportClickCSV(code) {
+  const url = `${BASE}/api/links/${code}/clicks/export`;
+  const resp = await authFetch(url);
+  if (!resp.ok) { showToast('Export failed'); return; }
+  const blob = await resp.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `clicks-${code}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Shorten ────────────────────────────────────────

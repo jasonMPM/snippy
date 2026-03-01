@@ -23,12 +23,12 @@ A self-hosted URL shortener with QR code generation, click analytics, and tag-ba
 | 6 | **Deployment Portability** | `APP_NAME` & `BASE_URL` env vars, `/api/config` endpoint, all hardcoded domains removed |
 | 7 | **UI Polish** | Teal/blue accent palette, gradient hero & buttons, improved text contrast |
 | 8 | **Multi-user** | Per-user accounts, admin user-management panel, `ADMIN_USERNAME` env var, username + password login |
+| 9 | **Analytics Deep-Dive** | Geographic breakdown (country via CF-IPCountry + ip-api.com), hourly 7×24 heatmap, dashboard-wide 30-day click chart, per-link raw click-event CSV export |
 
 ### Upcoming
 
 | # | Milestone | Planned features |
 |---|---|---|
-| 9 | **Analytics Deep-Dive** | Geographic breakdown (country/city), hourly heatmap (7×24 grid), dashboard-wide click chart, raw click-event CSV export |
 | 10 | **Power Features** | API key auth, password-protected links, UTM parameter builder, custom 404/expired pages |
 | 11 | **Link Organisation** | Folders/groups, duplicate link, link health checks, per-link redirect type (301 vs 302) |
 
