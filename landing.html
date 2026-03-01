@@ -270,7 +270,7 @@ footer {
 <!-- ── HEADER ── -->
 <header>
   <a class="logo" href="/">
-    <span class="logo-icon-wrap"><img class="logo-icon" src="/static/qk-ico.png" alt=""><span class="logo-icon-tint"></span></span><span id="lp-brand-pre">QR</span><span class="logo-dot-text" id="lp-brand-dot">k</span><span class="logo-alwisp" id="lp-brand-suf">nit</span>
+    <span class="logo-icon-wrap"><img class="logo-icon" src="/static/qk-ico.png" alt=""><span class="logo-icon-tint"></span></span>QR<span class="logo-dot-text">knit</span>
   </a>
   <div class="header-right">
     <div class="theme-picker">
@@ -325,8 +325,8 @@ footer {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent3-light)"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M11 7h2M7 11v2M15 11h2M11 17h2M17 13v2"/></svg>
         </div>
         <h3>QR Code Generator</h3>
-        <p>Five dot styles, full colour control, logo overlay support, and downloadable PNGs — right in the browser. Generate for any URL, not just your short links.</p>
-        <span class="feature-tag" style="color:var(--accent3-light);background:rgba(var(--accent3-rgb),.1);border-color:rgba(var(--accent3-rgb),.2)">5 styles · Logo overlay · Custom colours</span>
+        <p>Five dot styles, full color control, logo overlay support, and downloadable PNGs — right in the browser. Generate for any URL, not just your short links.</p>
+        <span class="feature-tag" style="color:var(--accent3-light);background:rgba(var(--accent3-rgb),.1);border-color:rgba(var(--accent3-rgb),.2)">5 styles · Logo overlay · Custom colors</span>
       </div>
 
       <div class="feature-card reveal reveal-delay-3">
@@ -360,7 +360,7 @@ footer {
         <div class="feature-icon" style="background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.2)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ff4757"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         </div>
-        <h3>Four Colour Themes</h3>
+        <h3>Four Color Themes</h3>
         <p>Switch between Cyan, Gold, Green, and Red accent palettes. Preference is stored in localStorage and applies instantly — no page reload, no account needed.</p>
         <span class="feature-tag" style="color:#ff9daa;background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.2)">Cyan · Gold · Green · Red</span>
       </div>
@@ -483,7 +483,7 @@ footer {
           <li>Full analytics suite</li>
           <li>Multi-user with admin panel</li>
           <li>CSV import &amp; export</li>
-          <li>All four colour themes</li>
+          <li>All four color themes</li>
           <li>Community support (GitHub)</li>
         </ul>
         <a class="btn-outline" href="/app" style="justify-content:center;margin-top:auto">Get started →</a>
@@ -578,24 +578,6 @@ document.querySelectorAll('.theme-swatch').forEach(s => {
   });
 })();
 
-// ── Brand name from /api/config ───────────────────────────────────────────
-(async function(){
-  try {
-    const d = await (await fetch('/api/config')).json();
-    if (!d.app_name) return;
-    const parts = d.app_name.split('.');
-    if (parts.length >= 2) {
-      document.getElementById('lp-brand-pre').textContent = parts[0];
-      document.getElementById('lp-brand-dot').textContent = '.';
-      document.getElementById('lp-brand-suf').textContent = parts.slice(1).join('.');
-    } else {
-      document.getElementById('lp-brand-pre').textContent = '';
-      document.getElementById('lp-brand-dot').textContent = '';
-      document.getElementById('lp-brand-suf').textContent = d.app_name;
-    }
-  } catch(e){}
-})();
-
 // ── Error banner (for /?error= from expired/dead short links) ─────────────
 (function(){
   const p = new URLSearchParams(location.search);
@@ -676,7 +658,7 @@ document.querySelectorAll('.theme-swatch').forEach(s => {
   }
 
   render();
-  // Re-render when theme changes so colours update
+  // Re-render when theme changes so colors update
   document.querySelectorAll('.theme-swatch').forEach(s => {
     s.addEventListener('click', () => setTimeout(render, 50));
   });
