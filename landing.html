@@ -261,6 +261,24 @@ footer {
   .feature-grid, .pillar-grid, .pricing-grid { grid-template-columns:1fr; }
   .hero-cta { flex-direction:column; align-items:center; }
 }
+
+/* ── CONTACT MODAL ── */
+.contact-backdrop { display:none; position:fixed; inset:0; z-index:600; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px; }
+.contact-backdrop.open { display:flex; }
+.contact-modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:36px; width:100%; max-width:480px; position:relative; box-shadow:0 24px 60px rgba(0,0,0,.5); }
+.contact-modal h3 { font-family:var(--font-head); font-size:16px; font-weight:700; letter-spacing:.04em; margin-bottom:6px; }
+.contact-modal .cm-sub { font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.5; }
+.contact-modal label { display:block; font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; color:var(--muted); margin-bottom:6px; }
+.contact-modal input, .contact-modal textarea { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; color:var(--text); font-family:var(--font-body); font-size:14px; outline:none; transition:border-color .2s; }
+.contact-modal input:focus, .contact-modal textarea:focus { border-color:rgba(var(--accent-rgb),.5); }
+.contact-modal textarea { resize:vertical; min-height:80px; }
+.contact-field { margin-bottom:16px; }
+.cm-actions { display:flex; gap:12px; justify-content:flex-end; margin-top:24px; }
+.cm-close { position:absolute; top:14px; right:16px; background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; padding:4px; }
+.cm-close:hover { color:var(--text); }
+.cm-success { display:none; text-align:center; padding:20px 0; }
+.cm-success .cm-check { font-size:40px; color:var(--accent); margin-bottom:12px; }
+.cm-success p { color:var(--muted); font-size:14px; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -486,7 +504,7 @@ footer {
           <li>All four color themes</li>
           <li>Community support (GitHub)</li>
         </ul>
-        <a class="btn-outline" href="/app" style="justify-content:center;margin-top:auto">Get started →</a>
+        <button class="btn-outline" onclick="openContact('request-access')" style="justify-content:center;margin-top:auto">Get started →</button>
       </div>
 
       <div class="pricing-card featured reveal reveal-delay-2">
@@ -502,7 +520,7 @@ footer {
           <li>Priority email support</li>
           <li class="dim">On-premise control</li>
         </ul>
-        <div class="pricing-soon">Notify me when available</div>
+        <button class="pricing-soon" onclick="openContact('notify-me-cloud')">Notify me when available</button>
       </div>
 
       <div class="pricing-card reveal reveal-delay-3">
@@ -518,7 +536,7 @@ footer {
           <li>API key authentication</li>
           <li>UTM parameter builder</li>
         </ul>
-        <div class="pricing-soon" style="border-color:rgba(var(--accent3-rgb),.2)">Notify me when available</div>
+        <button class="pricing-soon" onclick="openContact('notify-me-team')" style="border-color:rgba(var(--accent3-rgb),.2);cursor:pointer">Notify me when available</button>
       </div>
 
     </div>
@@ -553,6 +571,39 @@ footer {
   <div class="footer-note">MIT licence · Built with Flask + SQLite</div>
 </footer>
 
+
+<!-- ── Contact modal ── -->
+<div class="contact-backdrop" id="contact-backdrop" onclick="contactBackdropClick(event)">
+  <div class="contact-modal">
+    <button class="cm-close" onclick="closeContact()" aria-label="Close">&times;</button>
+    <div id="cm-form-content">
+      <h3>Get in Touch</h3>
+      <p class="cm-sub" id="cm-subtitle">Send us a message and we'll get back to you.</p>
+      <div class="contact-field">
+        <label for="cm-name">NAME</label>
+        <input type="text" id="cm-name" placeholder="Your name" autocomplete="name">
+      </div>
+      <div class="contact-field">
+        <label for="cm-email">EMAIL</label>
+        <input type="email" id="cm-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="contact-field">
+        <label for="cm-body">MESSAGE <span style="font-size:10px;opacity:.6">(optional)</span></label>
+        <textarea id="cm-body" placeholder="Anything you'd like to add…"></textarea>
+      </div>
+      <input type="hidden" id="cm-subject">
+      <div class="cm-actions">
+        <button class="btn-outline" type="button" onclick="closeContact()">Cancel</button>
+        <button class="btn-primary" type="button" onclick="submitContact()" id="cm-submit">Send message</button>
+      </div>
+    </div>
+    <div class="cm-success" id="cm-success">
+      <div class="cm-check">✓</div>
+      <h3 style="margin-bottom:8px">Message sent!</h3>
+      <p>Thanks for reaching out. We'll be in touch soon.</p>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Theme picker ──────────────────────────────────────────────────────────
@@ -663,6 +714,72 @@ document.querySelectorAll('.theme-swatch').forEach(s => {
     s.addEventListener('click', () => setTimeout(render, 50));
   });
 })();
+
+// ── Contact form ───────────────────────────────────────────────────────────
+const CM_SUBTITLES = {
+  'request-access': "Interested in getting started? Leave your details and we'll follow up.",
+  'notify-me-cloud': "We'll let you know as soon as Cloud hosting is available.",
+  'notify-me-team':  "We'll let you know when the Team tier launches.",
+};
+
+function openContact(subject) {
+  document.getElementById('cm-subject').value = subject;
+  const sub = CM_SUBTITLES[subject] || "Send us a message and we'll get back to you.";
+  document.getElementById('cm-subtitle').textContent = sub;
+  document.getElementById('cm-form-content').style.display = '';
+  document.getElementById('cm-success').style.display = 'none';
+  document.getElementById('cm-name').value  = '';
+  document.getElementById('cm-email').value = '';
+  document.getElementById('cm-body').value  = '';
+  const btn = document.getElementById('cm-submit');
+  btn.disabled = false;
+  btn.textContent = 'Send message';
+  document.getElementById('contact-backdrop').classList.add('open');
+  setTimeout(() => document.getElementById('cm-name').focus(), 80);
+}
+
+function closeContact() {
+  document.getElementById('contact-backdrop').classList.remove('open');
+}
+
+function contactBackdropClick(e) {
+  if (e.target === document.getElementById('contact-backdrop')) closeContact();
+}
+
+async function submitContact() {
+  const name    = document.getElementById('cm-name').value.trim();
+  const email   = document.getElementById('cm-email').value.trim();
+  const subject = document.getElementById('cm-subject').value;
+  const body    = document.getElementById('cm-body').value.trim();
+  if (!name)  { document.getElementById('cm-name').focus();  return; }
+  if (!email) { document.getElementById('cm-email').focus(); return; }
+  const btn = document.getElementById('cm-submit');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const resp = await fetch('/api/contact', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, email, subject, body })
+    });
+    if (resp.ok) {
+      document.getElementById('cm-form-content').style.display = 'none';
+      document.getElementById('cm-success').style.display = 'block';
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Send message';
+      alert('Something went wrong. Please try again.');
+    }
+  } catch {
+    btn.disabled = false;
+    btn.textContent = 'Send message';
+    alert('Network error. Please try again.');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeContact();
+});
 </script>
 </body>
 </html>

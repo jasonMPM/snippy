@@ -93,6 +93,15 @@ def init_db():
                 FOREIGN KEY (link_id) REFERENCES links(id),
                 FOREIGN KEY (tag_id)  REFERENCES tags(id)
             );
+            CREATE TABLE IF NOT EXISTS messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL,
+                email      TEXT NOT NULL,
+                subject    TEXT NOT NULL,
+                body       TEXT,
+                created_at TEXT NOT NULL,
+                is_read    INTEGER DEFAULT 0
+            );
             CREATE INDEX IF NOT EXISTS idx_links_code  ON links(code);
             CREATE INDEX IF NOT EXISTS idx_clicks_link ON clicks(link_id);
             CREATE INDEX IF NOT EXISTS idx_clicks_at   ON clicks(clicked_at);
@@ -1112,6 +1121,56 @@ def admin_change_password(user_id):
             return jsonify({'error': 'Not found'}), 404
         conn.execute('UPDATE users SET password_hash=? WHERE id=?',
                      (generate_password_hash(password), user_id))
+    return jsonify({'success': True})
+
+
+# ─────────────────────────────────────────────
+# Contact / Portal messages
+# ─────────────────────────────────────────────
+
+@app.route('/api/contact', methods=['POST'])
+def submit_contact():
+    data    = request.get_json(silent=True) or {}
+    name    = (data.get('name') or '').strip()
+    email   = (data.get('email') or '').strip()
+    subject = (data.get('subject') or '').strip()
+    body    = (data.get('body') or '').strip()
+    if not name or not email or not subject:
+        return jsonify({'error': 'name, email and subject are required'}), 400
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            'INSERT INTO messages (name, email, subject, body, created_at) VALUES (?,?,?,?,?)',
+            (name, email, subject, body, now)
+        )
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/messages', methods=['GET'])
+@admin_required
+def admin_list_messages():
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT * FROM messages ORDER BY created_at DESC'
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/admin/messages/<int:msg_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_message(msg_id):
+    with get_db() as conn:
+        if not conn.execute('SELECT 1 FROM messages WHERE id=?', (msg_id,)).fetchone():
+            return jsonify({'error': 'Not found'}), 404
+        conn.execute('DELETE FROM messages WHERE id=?', (msg_id,))
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/messages/<int:msg_id>/read', methods=['PATCH'])
+@admin_required
+def admin_mark_message_read(msg_id):
+    with get_db() as conn:
+        conn.execute('UPDATE messages SET is_read=1 WHERE id=?', (msg_id,))
     return jsonify({'success': True})
 
 

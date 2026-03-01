@@ -90,6 +90,34 @@ nav button.active { color:var(--accent); background:rgba(var(--accent-rgb),.08);
 .btn-logout { background:transparent; border:1px solid var(--border); color:var(--muted); font-family:var(--font-mono); font-size:12px; padding:5px 12px; border-radius:8px; cursor:pointer; transition:all .2s; }
 .btn-logout:hover { border-color:var(--accent2); color:var(--accent2); }
 
+/* ── PORTAL ── */
+.portal-btn { position:relative; background:transparent; border:1px solid rgba(var(--accent-rgb),.3); color:var(--accent); font-family:var(--font-mono); font-size:11px; letter-spacing:.08em; padding:5px 12px; border-radius:8px; cursor:pointer; transition:all .2s; }
+.portal-btn:hover { background:rgba(var(--accent-rgb),.08); border-color:var(--accent); }
+.portal-badge { position:absolute; top:-5px; right:-5px; min-width:16px; height:16px; background:var(--accent2); color:#fff; font-family:var(--font-mono); font-size:9px; font-weight:700; border-radius:8px; padding:0 4px; display:flex; align-items:center; justify-content:center; line-height:1; }
+.portal-panel { position:absolute; top:calc(100% + 8px); right:0; width:380px; max-height:520px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 16px 48px rgba(0,0,0,.5); display:none; flex-direction:column; z-index:300; overflow:hidden; }
+.portal-panel.open { display:flex; }
+.portal-panel-hdr { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.portal-panel-hdr h4 { font-family:var(--font-mono); font-size:12px; letter-spacing:.06em; color:var(--accent); }
+.portal-hdr-actions { display:flex; gap:8px; align-items:center; }
+.portal-mark-all { background:none; border:none; font-family:var(--font-mono); font-size:10px; color:var(--muted); cursor:pointer; padding:2px 6px; border-radius:4px; transition:color .2s; }
+.portal-mark-all:hover { color:var(--text); }
+.portal-msgs { overflow-y:auto; flex:1; }
+.portal-msg { border-bottom:1px solid var(--border); padding:14px 16px; cursor:default; transition:background .15s; }
+.portal-msg:last-child { border-bottom:none; }
+.portal-msg.unread { background:rgba(var(--accent-rgb),.04); }
+.portal-msg-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px; }
+.portal-msg-from { font-family:var(--font-mono); font-size:11px; color:var(--text); font-weight:600; }
+.portal-msg-tag { font-family:var(--font-mono); font-size:9px; letter-spacing:.06em; padding:2px 6px; border-radius:4px; background:rgba(var(--accent-rgb),.12); color:var(--accent); white-space:nowrap; }
+.portal-msg-tag.tag-notify { background:rgba(var(--accent3-rgb),.12); color:var(--accent3-light); }
+.portal-msg-email { font-size:12px; color:var(--muted); margin-bottom:4px; }
+.portal-msg-body { font-size:12px; color:var(--muted); line-height:1.5; word-break:break-word; }
+.portal-msg-foot { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+.portal-msg-date { font-family:var(--font-mono); font-size:10px; color:var(--muted); opacity:.6; }
+.portal-del-btn { background:none; border:none; font-family:var(--font-mono); font-size:10px; color:var(--muted); cursor:pointer; padding:2px 6px; border-radius:4px; transition:color .2s; }
+.portal-del-btn:hover { color:var(--accent2); }
+.portal-empty { padding:32px 16px; text-align:center; color:var(--muted); font-size:13px; font-family:var(--font-mono); }
+.portal-wrap { position:relative; }
+
 /* ── LAYOUT ── */
 main { position:relative; z-index:1; }
 .view { display:none; padding:40px; max-width:980px; margin:0 auto; }
@@ -445,6 +473,21 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px;
       <button class="theme-swatch" data-theme="green"   title="Green"          aria-label="Green theme"></button>
       <button class="theme-swatch" data-theme="red"     title="Red"            aria-label="Red theme"></button>
     </div>
+    <div class="portal-wrap" id="portal-wrap" style="display:none">
+      <button class="portal-btn" id="portal-btn" onclick="togglePortal()">
+        PORTAL
+        <span class="portal-badge" id="portal-badge" style="display:none"></span>
+      </button>
+      <div class="portal-panel" id="portal-panel">
+        <div class="portal-panel-hdr">
+          <h4>PORTAL MESSAGES</h4>
+          <div class="portal-hdr-actions">
+            <button class="portal-mark-all" onclick="markAllPortalRead()">Mark all read</button>
+          </div>
+        </div>
+        <div class="portal-msgs" id="portal-msgs"></div>
+      </div>
+    </div>
     <div class="user-badge" id="user-badge" style="display:none">
       <span id="user-badge-name"></span>
       <span class="admin-tag" id="user-badge-admin" style="display:none">ADMIN</span>
@@ -743,6 +786,11 @@ function onLoggedIn(userData) {
   // Admin nav tab
   document.getElementById('admin-nav-btn').style.display = userData.is_admin ? '' : 'none';
   document.getElementById('logout-btn').style.display = 'block';
+  // Portal (admin only)
+  if (userData.is_admin) {
+    document.getElementById('portal-wrap').style.display = '';
+    loadPortalMessages();
+  }
   loadDashboard();
 }
 
@@ -751,9 +799,117 @@ function onLoggedOut() {
   document.getElementById('user-badge').style.display   = 'none';
   document.getElementById('admin-nav-btn').style.display = 'none';
   document.getElementById('logout-btn').style.display   = 'none';
+  document.getElementById('portal-wrap').style.display  = 'none';
+  closePortal();
   showView('home');
   showAuthModal();
 }
+
+// ── Portal inbox ────────────────────────────────────
+let portalOpen = false;
+let portalMessages = [];
+
+function togglePortal() {
+  portalOpen = !portalOpen;
+  document.getElementById('portal-panel').classList.toggle('open', portalOpen);
+  if (portalOpen) loadPortalMessages();
+}
+
+function closePortal() {
+  portalOpen = false;
+  const panel = document.getElementById('portal-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+async function loadPortalMessages() {
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/messages`);
+    if (!resp.ok) return;
+    portalMessages = await resp.json();
+    renderPortalMessages();
+    updatePortalBadge();
+  } catch {}
+}
+
+function renderPortalMessages() {
+  const container = document.getElementById('portal-msgs');
+  if (!portalMessages.length) {
+    container.innerHTML = '<div class="portal-empty">No messages yet</div>';
+    return;
+  }
+  const SUBJECT_LABELS = {
+    'request-access': { label: 'REQUEST ACCESS', cls: '' },
+    'notify-me-cloud': { label: 'NOTIFY: CLOUD', cls: 'tag-notify' },
+    'notify-me-team':  { label: 'NOTIFY: TEAM',  cls: 'tag-notify' },
+  };
+  container.innerHTML = portalMessages.map(m => {
+    const tag = SUBJECT_LABELS[m.subject] || { label: m.subject.toUpperCase(), cls: '' };
+    const date = m.created_at ? m.created_at.slice(0, 16).replace('T', ' ') : '';
+    const body = m.body ? `<div class="portal-msg-body">${escHtml(m.body)}</div>` : '';
+    return `<div class="portal-msg${m.is_read ? '' : ' unread'}" id="pmsg-${m.id}">
+      <div class="portal-msg-hdr">
+        <span class="portal-msg-from">${escHtml(m.name)}</span>
+        <span class="portal-msg-tag ${tag.cls}">${tag.label}</span>
+      </div>
+      <div class="portal-msg-email">${escHtml(m.email)}</div>
+      ${body}
+      <div class="portal-msg-foot">
+        <span class="portal-msg-date">${date}</span>
+        <button class="portal-del-btn" onclick="deletePortalMessage(${m.id})">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+  // Mark unread messages as read after a short delay
+  portalMessages.filter(m => !m.is_read).forEach(m => {
+    setTimeout(() => markPortalMessageRead(m.id), 800);
+  });
+}
+
+async function markPortalMessageRead(id) {
+  try {
+    await authFetch(`${BASE}/api/admin/messages/${id}/read`, {method:'PATCH'});
+    const msg = portalMessages.find(m => m.id === id);
+    if (msg) { msg.is_read = 1; updatePortalBadge(); }
+    const el = document.getElementById(`pmsg-${id}`);
+    if (el) el.classList.remove('unread');
+  } catch {}
+}
+
+async function markAllPortalRead() {
+  const unread = portalMessages.filter(m => !m.is_read);
+  for (const m of unread) await markPortalMessageRead(m.id);
+}
+
+async function deletePortalMessage(id) {
+  try {
+    const resp = await authFetch(`${BASE}/api/admin/messages/${id}`, {method:'DELETE'});
+    if (!resp.ok) return;
+    portalMessages = portalMessages.filter(m => m.id !== id);
+    renderPortalMessages();
+    updatePortalBadge();
+  } catch {}
+}
+
+function updatePortalBadge() {
+  const unread = portalMessages.filter(m => !m.is_read).length;
+  const badge = document.getElementById('portal-badge');
+  if (unread > 0) {
+    badge.textContent = unread > 99 ? '99+' : unread;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close portal when clicking outside
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('portal-wrap');
+  if (portalOpen && wrap && !wrap.contains(e.target)) closePortal();
+});
 
 // ── Branding ───────────────────────────────────────
 async function applyConfig() {
