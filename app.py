@@ -1209,6 +1209,11 @@ def landing():
     with open(os.path.join(os.path.dirname(__file__), 'landing.html')) as f:
         return f.read()
 
+@app.route('/landing2')
+def landing2():
+    with open(os.path.join(os.path.dirname(__file__), 'landing2.html')) as f:
+        return f.read()
+
 @app.route('/app', defaults={'subpath': ''})
 @app.route('/app/<path:subpath>')
 def app_frontend(subpath):
