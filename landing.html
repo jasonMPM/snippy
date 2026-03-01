@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<script>
+  (function(){var t=localStorage.getItem('qrknit-theme');if(t&&t!=='default')document.documentElement.setAttribute('data-theme',t);})();
+</script>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QRknit — Self-Hosted Link Shortener & QR Generator</title>
+<meta name="description" content="A self-hosted URL shortener with QR code generation and deep click analytics. Runs in a single Docker container. Your data, your server.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:            #0a0a0f;
+  --surface:       #111118;
+  --surface2:      #181824;
+  --surface3:      #1e1e2e;
+  --border:        rgba(255,255,255,0.07);
+  --accent:        #00b8d4;
+  --accent-rgb:    0,184,212;
+  --accent-grad:   #1a52c8;
+  --accent-grad-rgb: 26,82,200;
+  --accent2:       #ff5e62;
+  --accent3:       #7c6af7;
+  --accent3-rgb:   124,106,247;
+  --accent3-light: #a89cf7;
+  --text:          #f0f0f8;
+  --muted:         #808098;
+  --radius:        12px;
+  --font-head:     'Orbitron', sans-serif;
+  --font-mono:     'Share Tech Mono', monospace;
+  --font-body:     'Barlow', sans-serif;
+}
+[data-theme="gold"]  { --accent:#f5a623; --accent-rgb:245,166,35;  --accent-grad:#c47f17; --accent-grad-rgb:196,127,23;  --accent3:#d4a847; --accent3-rgb:212,168,71;  --accent3-light:#e8c96a; }
+[data-theme="green"] { --accent:#00c896; --accent-rgb:0,200,150;   --accent-grad:#007a58; --accent-grad-rgb:0,122,88;    --accent3:#4caf7a; --accent3-rgb:76,175,122;  --accent3-light:#7fd9a4; }
+[data-theme="red"]   { --accent:#ff4757; --accent-rgb:255,71,87;   --accent-grad:#c0392b; --accent-grad-rgb:192,57,43;   --accent3:#ff6b7a; --accent3-rgb:255,107,122; --accent3-light:#ff9daa; }
+
+html  { scroll-behavior: smooth; }
+body  { background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:15px; line-height:1.6; min-height:100vh; overflow-x:hidden; }
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(ellipse 90% 60% at 15% -5%,  rgba(var(--accent-rgb),.09)      0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 90%,  rgba(var(--accent-grad-rgb),.08) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 50% at 50% 50%,  rgba(var(--accent-rgb),.03)      0%, transparent 60%);
+}
+
+/* ── HEADER ── */
+header {
+  position:sticky; top:0; z-index:200;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 40px; height:64px;
+  background:rgba(10,10,15,.88); backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.logo { font-family:var(--font-head); font-size:18px; font-weight:700; letter-spacing:.04em; text-decoration:none; color:var(--text); display:inline-flex; align-items:center; gap:8px; }
+.logo-dot-text { color:var(--accent); text-shadow:0 0 12px var(--accent); }
+.logo-alwisp   { text-transform:uppercase; }
+.logo-icon-wrap { position:relative; display:inline-flex; align-items:center; flex-shrink:0; isolation:isolate; }
+.logo-icon      { height:26px; width:26px; object-fit:contain; border-radius:3px; display:block; }
+.logo-icon-tint { position:absolute; inset:0; background:var(--accent); mix-blend-mode:hue; border-radius:3px; pointer-events:none; }
+
+.header-right { display:flex; align-items:center; gap:12px; }
+.theme-picker  { display:flex; align-items:center; gap:6px; padding:0 4px; }
+.theme-swatch  { width:14px; height:14px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; transition:transform .2s,border-color .2s; }
+.theme-swatch:hover  { transform:scale(1.2); }
+.theme-swatch.active { border-color:var(--text); transform:scale(1.15); }
+.theme-swatch[data-theme="default"] { background:linear-gradient(135deg,#00b8d4,#1a52c8); }
+.theme-swatch[data-theme="gold"]    { background:linear-gradient(135deg,#f5a623,#c47f17); }
+.theme-swatch[data-theme="green"]   { background:linear-gradient(135deg,#00c896,#007a58); }
+.theme-swatch[data-theme="red"]     { background:linear-gradient(135deg,#ff4757,#c0392b); }
+
+/* ── BUTTONS ── */
+.btn-primary { background:linear-gradient(135deg,var(--accent),var(--accent-grad)); color:#fff; border:none; cursor:pointer; font-family:var(--font-head); font-weight:700; font-size:12px; letter-spacing:.04em; padding:12px 22px; border-radius:var(--radius); transition:all .2s; white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary:hover  { transform:translateY(-1px); box-shadow:0 8px 24px rgba(var(--accent-rgb),.35); }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); font-family:var(--font-mono); font-size:12px; padding:11px 20px; border-radius:var(--radius); cursor:pointer; transition:all .2s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.btn-outline:hover { border-color:rgba(var(--accent-rgb),.5); color:var(--accent); }
+
+/* ── SECTIONS ── */
+section { position:relative; z-index:1; }
+.section-inner { max-width:1080px; margin:0 auto; padding:0 40px; }
+
+/* ── HERO ── */
+.hero { text-align:center; padding:110px 40px 80px; position:relative; z-index:1; overflow:hidden; }
+.hero-eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; color:var(--accent); text-transform:uppercase; margin-bottom:24px; }
+.hero h1 {
+  font-family:var(--font-head); font-weight:900; line-height:1.05;
+  font-size:clamp(38px,7vw,82px); letter-spacing:.04em; margin-bottom:28px;
+}
+.hero-accent { background:linear-gradient(135deg,var(--accent) 0%,var(--accent-grad) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hero-sub { font-size:clamp(15px,2vw,19px); color:var(--muted); max-width:600px; margin:0 auto 44px; font-weight:300; line-height:1.7; }
+.hero-cta  { display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; margin-bottom:70px; }
+.hero-note { font-family:var(--font-mono); font-size:11px; color:var(--muted); letter-spacing:.06em; }
+.hero-note span { color:var(--accent); }
+
+/* hero glow ring */
+.hero::after {
+  content:''; position:absolute; left:50%; top:60px; transform:translateX(-50%);
+  width:600px; height:600px; border-radius:50%;
+  background:radial-gradient(ellipse, rgba(var(--accent-rgb),.07) 0%, transparent 70%);
+  pointer-events:none; z-index:-1;
+}
+
+/* ── FEATURE GRID ── */
+.feature-section { padding:80px 0 90px; }
+.section-label { font-family:var(--font-mono); font-size:10px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; margin-bottom:12px; text-align:center; }
+.section-title { font-family:var(--font-head); font-size:clamp(22px,3vw,32px); font-weight:700; text-align:center; margin-bottom:56px; }
+.feature-grid  { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+.feature-card  {
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:28px; position:relative; overflow:hidden; transition:border-color .25s, transform .25s;
+}
+.feature-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--accent),transparent);
+}
+.feature-card:hover { border-color:rgba(var(--accent-rgb),.25); transform:translateY(-3px); }
+.feature-icon { width:40px; height:40px; border-radius:10px; background:rgba(var(--accent-rgb),.1); border:1px solid rgba(var(--accent-rgb),.2); display:flex; align-items:center; justify-content:center; margin-bottom:18px; flex-shrink:0; }
+.feature-icon svg { color:var(--accent); }
+.feature-card h3 { font-family:var(--font-head); font-size:13px; font-weight:700; letter-spacing:.04em; margin-bottom:10px; }
+.feature-card p  { font-size:13px; color:var(--muted); line-height:1.65; }
+.feature-tag { display:inline-block; font-family:var(--font-mono); font-size:9px; letter-spacing:.08em; color:var(--accent3-light); background:rgba(var(--accent3-rgb),.1); border:1px solid rgba(var(--accent3-rgb),.2); border-radius:4px; padding:1px 7px; margin-top:14px; }
+
+/* ── ANALYTICS SHOWCASE ── */
+.analytics-section { padding:80px 0 90px; background:linear-gradient(180deg, transparent 0%, rgba(var(--accent-rgb),.03) 40%, transparent 100%); }
+.analytics-split { display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center; }
+.analytics-copy .section-label { text-align:left; }
+.analytics-copy .section-title { text-align:left; margin-bottom:20px; }
+.analytics-copy p  { color:var(--muted); font-size:14px; line-height:1.75; margin-bottom:16px; }
+.analytics-list    { list-style:none; margin:24px 0 32px; display:flex; flex-direction:column; gap:10px; }
+.analytics-list li { font-family:var(--font-mono); font-size:12px; color:var(--text); display:flex; align-items:center; gap:10px; }
+.analytics-list li::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+
+/* mock analytics panel */
+.mock-panel {
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:20px; box-shadow:0 32px 80px rgba(0,0,0,.5);
+}
+.mock-panel-title { font-family:var(--font-mono); font-size:10px; color:var(--muted); letter-spacing:.1em; margin-bottom:14px; }
+.mock-chart { display:flex; align-items:flex-end; gap:3px; height:70px; margin-bottom:16px; }
+.mock-bar { border-radius:2px 2px 0 0; flex:1; min-width:4px; transition:opacity .3s; }
+.mock-heatmap { display:grid; grid-template-columns:24px repeat(12,1fr); gap:2px; margin-bottom:14px; }
+.mock-hm-label { font-family:var(--font-mono); font-size:7px; color:var(--muted); display:flex; align-items:center; }
+.mock-hm-cell  { height:10px; border-radius:2px; }
+.mock-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.mock-stat  { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px; }
+.mock-stat-val { font-family:var(--font-head); font-size:16px; font-weight:700; color:var(--accent); line-height:1; margin-bottom:3px; }
+.mock-stat-lbl { font-family:var(--font-mono); font-size:8px; color:var(--muted); letter-spacing:.06em; }
+
+/* ── SELF-HOSTED ── */
+.self-hosted-section { padding:80px 0; }
+.pillar-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:56px; }
+.pillar-card {
+  background:var(--surface2); border:1px solid var(--border); border-radius:14px;
+  padding:28px 24px; text-align:center;
+}
+.pillar-num  { font-family:var(--font-head); font-size:36px; font-weight:900; line-height:1; background:linear-gradient(135deg,var(--accent),var(--accent-grad)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:8px; }
+.pillar-label{ font-family:var(--font-mono); font-size:10px; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px; }
+.pillar-desc { font-size:13px; color:var(--muted); line-height:1.6; }
+
+/* ── DEPLOY ── */
+.deploy-section { padding:80px 0 90px; }
+.deploy-split { display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:start; }
+.code-block {
+  background:var(--surface2); border:1px solid var(--border); border-radius:14px;
+  padding:24px; position:relative; overflow:hidden;
+}
+.code-block::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,var(--accent),transparent); }
+.code-block pre { font-family:var(--font-mono); font-size:12px; color:var(--text); line-height:1.8; overflow-x:auto; white-space:pre; }
+.code-line { display:block; }
+.code-key  { color:var(--accent3-light); }
+.code-val  { color:rgba(var(--accent-rgb),.9); }
+.code-flag { color:var(--muted); }
+.deploy-copy .section-title { text-align:left; margin-bottom:18px; }
+.deploy-copy .section-label { text-align:left; }
+.deploy-copy p { color:var(--muted); font-size:14px; line-height:1.75; margin-bottom:16px; }
+.deploy-steps { list-style:none; margin:24px 0 0; display:flex; flex-direction:column; gap:12px; counter-reset:step; }
+.deploy-steps li { font-size:13px; color:var(--muted); display:flex; align-items:flex-start; gap:12px; counter-increment:step; }
+.deploy-steps li::before {
+  content:counter(step); flex-shrink:0;
+  width:22px; height:22px; border-radius:50%;
+  background:rgba(var(--accent-rgb),.1); border:1px solid rgba(var(--accent-rgb),.25);
+  font-family:var(--font-mono); font-size:10px; color:var(--accent);
+  display:flex; align-items:center; justify-content:center; margin-top:1px;
+}
+
+/* ── PRICING ── */
+.pricing-section { padding:80px 0 90px; }
+.pricing-grid  { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:56px; }
+.pricing-card  {
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:32px 28px; display:flex; flex-direction:column; position:relative; overflow:hidden;
+}
+.pricing-card.featured {
+  border-color:rgba(var(--accent-rgb),.35);
+  background:linear-gradient(160deg, var(--surface2) 0%, var(--surface) 100%);
+  box-shadow:0 0 0 1px rgba(var(--accent-rgb),.15), 0 24px 60px rgba(0,0,0,.4);
+}
+.pricing-card.featured::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--accent),var(--accent-grad)); }
+.pricing-badge { position:absolute; top:18px; right:18px; font-family:var(--font-mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; background:rgba(var(--accent-rgb),.15); border:1px solid rgba(var(--accent-rgb),.3); color:var(--accent); border-radius:4px; padding:2px 8px; }
+.pricing-name  { font-family:var(--font-head); font-size:13px; font-weight:700; letter-spacing:.06em; margin-bottom:6px; text-transform:uppercase; }
+.pricing-price { font-family:var(--font-head); font-size:36px; font-weight:900; line-height:1; margin:14px 0 6px; }
+.pricing-price span { font-size:14px; color:var(--muted); font-family:var(--font-body); font-weight:300; }
+.pricing-desc  { font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.6; }
+.pricing-features { list-style:none; margin:0 0 28px; display:flex; flex-direction:column; gap:9px; flex:1; }
+.pricing-features li { font-size:13px; color:var(--muted); display:flex; align-items:flex-start; gap:8px; }
+.pricing-features li::before { content:'✓'; color:var(--accent); font-family:var(--font-mono); font-size:11px; flex-shrink:0; margin-top:2px; }
+.pricing-features li.dim { opacity:.45; }
+.pricing-features li.dim::before { content:'—'; color:var(--muted); }
+.pricing-soon { background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:var(--font-mono); font-size:11px; padding:10px; border-radius:8px; text-align:center; margin-top:auto; letter-spacing:.04em; }
+
+/* ── FINAL CTA ── */
+.cta-section { padding:80px 40px 100px; text-align:center; position:relative; z-index:1; }
+.cta-section h2 { font-family:var(--font-head); font-size:clamp(24px,4vw,42px); font-weight:900; margin-bottom:16px; }
+.cta-section p  { font-size:15px; color:var(--muted); max-width:480px; margin:0 auto 36px; }
+.cta-sub { font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:20px; letter-spacing:.06em; }
+
+/* ── FOOTER ── */
+footer {
+  border-top:1px solid var(--border); padding:32px 40px;
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;
+  position:relative; z-index:1;
+}
+.footer-logo { font-family:var(--font-head); font-size:14px; font-weight:700; color:var(--muted); letter-spacing:.04em; display:flex; align-items:center; gap:6px; }
+.footer-logo span { color:var(--accent); }
+.footer-links { display:flex; gap:20px; align-items:center; }
+.footer-links a { font-family:var(--font-mono); font-size:11px; color:var(--muted); text-decoration:none; letter-spacing:.06em; transition:color .2s; }
+.footer-links a:hover { color:var(--accent); }
+.footer-note { font-family:var(--font-mono); font-size:10px; color:var(--muted); opacity:.5; letter-spacing:.05em; }
+
+/* ── DIVIDER ── */
+.section-divider { border:none; border-top:1px solid var(--border); margin:0; }
+
+/* ── ERROR BANNER ── */
+.error-banner { display:none; position:fixed; top:72px; left:50%; transform:translateX(-50%); z-index:300; background:var(--surface2); border:1px solid rgba(255,94,98,.3); border-radius:10px; padding:12px 20px; font-family:var(--font-mono); font-size:12px; color:#ff5e62; box-shadow:0 8px 24px rgba(0,0,0,.4); white-space:nowrap; }
+.error-banner.show { display:block; animation:fadeDown .3s ease; }
+@keyframes fadeDown { from{opacity:0;transform:translateX(-50%) translateY(-8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+/* ── REVEAL ANIMATIONS ── */
+.reveal { opacity:0; transform:translateY(24px); transition:opacity .55s ease, transform .55s ease; }
+.reveal.visible { opacity:1; transform:none; }
+.reveal-delay-1 { transition-delay:.1s; }
+.reveal-delay-2 { transition-delay:.2s; }
+.reveal-delay-3 { transition-delay:.3s; }
+.reveal-delay-4 { transition-delay:.4s; }
+.reveal-delay-5 { transition-delay:.5s; }
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px) {
+  header { padding:0 20px; }
+  .section-inner { padding:0 20px; }
+  .hero  { padding:80px 20px 60px; }
+  .feature-grid, .pillar-grid, .pricing-grid { grid-template-columns:1fr 1fr; }
+  .analytics-split, .deploy-split { grid-template-columns:1fr; gap:36px; }
+  footer { padding:24px 20px; }
+}
+@media(max-width:600px) {
+  .feature-grid, .pillar-grid, .pricing-grid { grid-template-columns:1fr; }
+  .hero-cta { flex-direction:column; align-items:center; }
+}
+</style>
+</head>
+<body>
+
+<div class="error-banner" id="error-banner"></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <a class="logo" href="/">
+    <span class="logo-icon-wrap"><img class="logo-icon" src="/static/qk-ico.png" alt=""><span class="logo-icon-tint"></span></span><span id="lp-brand-pre">QR</span><span class="logo-dot-text" id="lp-brand-dot">k</span><span class="logo-alwisp" id="lp-brand-suf">nit</span>
+  </a>
+  <div class="header-right">
+    <div class="theme-picker">
+      <button class="theme-swatch" data-theme="default" title="Default" aria-label="Default blue theme"></button>
+      <button class="theme-swatch" data-theme="gold"    title="Gold"    aria-label="Gold theme"></button>
+      <button class="theme-swatch" data-theme="green"   title="Green"   aria-label="Green theme"></button>
+      <button class="theme-swatch" data-theme="red"     title="Red"     aria-label="Red theme"></button>
+    </div>
+    <a class="btn-primary" href="/app">Open App →</a>
+  </div>
+</header>
+
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-eyebrow reveal">Self-hosted · Open source · Zero telemetry</div>
+  <h1 class="reveal reveal-delay-1">Short links.<br><span class="hero-accent">Sharp QR codes.</span><br>Real analytics.</h1>
+  <p class="hero-sub reveal reveal-delay-2">
+    Everything you need to shorten URLs, generate QR codes, and understand your traffic — running on your own hardware, under your full control.
+  </p>
+  <div class="hero-cta reveal reveal-delay-3">
+    <a class="btn-primary" href="/app" style="font-size:13px;padding:14px 28px">→ Open App</a>
+    <a class="btn-outline" href="https://github.com/jasonMPM/qrknit" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+  <div class="hero-note reveal reveal-delay-4">
+    <span>Single Docker container</span> · SQLite · No accounts required to self-host
+  </div>
+</section>
+
+
+<!-- ── FEATURES ── -->
+<section class="feature-section">
+  <div class="section-inner">
+    <div class="section-label reveal">What's inside</div>
+    <div class="section-title reveal reveal-delay-1">Everything in one container</div>
+    <div class="feature-grid">
+
+      <div class="feature-card reveal reveal-delay-1">
+        <div class="feature-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <h3>Link Shortening</h3>
+        <p>Custom codes, automatic expiry dates, tag organisation, bulk import and export. Search and filter your entire link library in milliseconds.</p>
+        <span class="feature-tag">Custom codes · Tags · Expiry · Bulk CSV</span>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-2">
+        <div class="feature-icon" style="background:rgba(var(--accent3-rgb),.1);border-color:rgba(var(--accent3-rgb),.2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent3-light)"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M11 7h2M7 11v2M15 11h2M11 17h2M17 13v2"/></svg>
+        </div>
+        <h3>QR Code Generator</h3>
+        <p>Five dot styles, full colour control, logo overlay support, and downloadable PNGs — right in the browser. Generate for any URL, not just your short links.</p>
+        <span class="feature-tag" style="color:var(--accent3-light);background:rgba(var(--accent3-rgb),.1);border-color:rgba(var(--accent3-rgb),.2)">5 styles · Logo overlay · Custom colours</span>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-3">
+        <div class="feature-icon" style="background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f5a623"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <h3>Click Analytics</h3>
+        <p>Daily bar charts, hourly 7×24 activity heatmap, geographic country breakdown, referrer and device tracking — all per link, with raw CSV export.</p>
+        <span class="feature-tag" style="color:#e8c96a;background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.2)">Heatmap · Geo · Referrers · CSV export</span>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-1">
+        <div class="feature-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>Multi-user Support</h3>
+        <p>Admin account management, per-user isolation so each user only sees their own links, and owner attribution so admins can quickly identify and act on abuse.</p>
+        <span class="feature-tag">Admin panel · User isolation · Owner badges</span>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-2">
+        <div class="feature-icon" style="background:rgba(0,200,150,.1);border-color:rgba(0,200,150,.2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#00c896"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h3>Docker Native</h3>
+        <p>One container, one volume, one command. SQLite keeps it simple — no Postgres, no Redis, no message queue. Works on Unraid, Synology, or any Docker host.</p>
+        <span class="feature-tag" style="color:#7fd9a4;background:rgba(0,200,150,.1);border-color:rgba(0,200,150,.2)">Single container · SQLite · Zero infra deps</span>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-3">
+        <div class="feature-icon" style="background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ff4757"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        </div>
+        <h3>Four Colour Themes</h3>
+        <p>Switch between Cyan, Gold, Green, and Red accent palettes. Preference is stored in localStorage and applies instantly — no page reload, no account needed.</p>
+        <span class="feature-tag" style="color:#ff9daa;background:rgba(255,71,87,.1);border-color:rgba(255,71,87,.2)">Cyan · Gold · Green · Red</span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── ANALYTICS SHOWCASE ── -->
+<section class="analytics-section">
+  <div class="section-inner">
+    <div class="analytics-split">
+      <div class="analytics-copy">
+        <div class="section-label reveal">Analytics deep-dive</div>
+        <h2 class="section-title reveal reveal-delay-1">Know exactly who clicked, when, and from where</h2>
+        <p class="reveal reveal-delay-2">Most link shorteners give you a click count. QRknit gives you the full picture — every event captured and broken down so you can make real decisions.</p>
+        <ul class="analytics-list reveal reveal-delay-3">
+          <li>Daily click bar chart per link (7d · 30d · 90d windows)</li>
+          <li>Hourly 7×24 activity heatmap — spot your peak times at a glance</li>
+          <li>Geographic country breakdown via Cloudflare headers</li>
+          <li>Referrer, device type, and browser breakdown</li>
+          <li>30-day dashboard-wide click chart across all links</li>
+          <li>Raw click-event CSV export — every timestamp, referrer, country</li>
+        </ul>
+        <a class="btn-primary reveal reveal-delay-4" href="/app">See it in action →</a>
+      </div>
+
+      <!-- Mock analytics panel -->
+      <div class="mock-panel reveal reveal-delay-2" id="mock-panel">
+        <div class="mock-panel-title">CLICK ANALYTICS — LAST 30 DAYS</div>
+        <div class="mock-chart" id="mock-chart"></div>
+        <div class="mock-panel-title" style="margin-top:4px">HOURLY ACTIVITY</div>
+        <div class="mock-heatmap" id="mock-heatmap"></div>
+        <div class="mock-stats">
+          <div class="mock-stat"><div class="mock-stat-val" id="mock-total">—</div><div class="mock-stat-lbl">TOTAL CLICKS</div></div>
+          <div class="mock-stat"><div class="mock-stat-val" id="mock-peak">—</div><div class="mock-stat-lbl">PEAK DAY</div></div>
+          <div class="mock-stat"><div class="mock-stat-val" id="mock-countries">—</div><div class="mock-stat-lbl">COUNTRIES</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── SELF-HOSTED ── -->
+<section class="self-hosted-section">
+  <div class="section-inner">
+    <div class="section-label reveal">Privacy by design</div>
+    <div class="section-title reveal reveal-delay-1">Your data never leaves your server</div>
+    <div class="pillar-grid">
+      <div class="pillar-card reveal reveal-delay-1">
+        <div class="pillar-num">0</div>
+        <div class="pillar-label">External infra deps</div>
+        <p class="pillar-desc">No Redis, no Postgres, no message queue. A single SQLite file holds everything. Back it up with one <code style="font-family:var(--font-mono);font-size:11px;color:var(--accent)">cp</code>.</p>
+      </div>
+      <div class="pillar-card reveal reveal-delay-2">
+        <div class="pillar-num">1</div>
+        <div class="pillar-label">Docker container</div>
+        <p class="pillar-desc">The entire app — Python, Flask, frontend, and all assets — ships as a single image. Map one port, mount one volume, done.</p>
+      </div>
+      <div class="pillar-card reveal reveal-delay-3">
+        <div class="pillar-num">∞</div>
+        <div class="pillar-label">Links you can create</div>
+        <p class="pillar-desc">No plan limits, no rate caps, no telemetry. Add as many users and links as your hardware can handle.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── DEPLOY ── -->
+<section class="deploy-section">
+  <div class="section-inner">
+    <div class="deploy-split">
+      <div class="deploy-copy">
+        <div class="section-label reveal">Get running in minutes</div>
+        <h2 class="section-title reveal reveal-delay-1">One command to deploy</h2>
+        <p class="reveal reveal-delay-2">No CI pipeline, no cloud credentials, no YAML sprawl. Clone the repo, build the image, run the container.</p>
+        <ol class="deploy-steps reveal reveal-delay-3">
+          <li>Clone the repo and <code style="font-family:var(--font-mono);color:var(--accent);font-size:12px">docker build</code> the image</li>
+          <li>Set <code style="font-family:var(--font-mono);color:var(--accent);font-size:12px">BASE_URL</code>, <code style="font-family:var(--font-mono);color:var(--accent);font-size:12px">SECRET_KEY</code>, and <code style="font-family:var(--font-mono);color:var(--accent);font-size:12px">ADMIN_PASSWORD</code></li>
+          <li>Point a domain at your server and enable HTTPS</li>
+          <li>Log in at <code style="font-family:var(--font-mono);color:var(--accent);font-size:12px">/app</code> and start shortening</li>
+        </ol>
+      </div>
+      <div class="code-block reveal reveal-delay-2">
+        <pre><span class="code-line"><span class="code-flag">docker run -d \</span></span>
+<span class="code-line">  <span class="code-key">--name</span> qrknit \</span>
+<span class="code-line">  <span class="code-key">--restart</span> unless-stopped \</span>
+<span class="code-line">  <span class="code-key">-p</span> 5000:5000 \</span>
+<span class="code-line">  <span class="code-key">-v</span> qrknit-data:/app/data \</span>
+<span class="code-line">  <span class="code-key">-e</span> <span class="code-val">BASE_URL</span>=https://yourdomain.com \</span>
+<span class="code-line">  <span class="code-key">-e</span> <span class="code-val">SECRET_KEY</span>=your-generated-key \</span>
+<span class="code-line">  <span class="code-key">-e</span> <span class="code-val">ADMIN_PASSWORD</span>=your-password \</span>
+<span class="code-line">  qrknit:latest</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── PRICING ── -->
+<section class="pricing-section">
+  <div class="section-inner">
+    <div class="section-label reveal">Pricing</div>
+    <div class="section-title reveal reveal-delay-1">Free to self-host. Cloud hosting coming soon.</div>
+    <div class="pricing-grid">
+
+      <div class="pricing-card reveal reveal-delay-1">
+        <div class="pricing-name">Self-hosted</div>
+        <div class="pricing-price">Free <span>forever</span></div>
+        <p class="pricing-desc">Deploy on your own hardware. Full feature access, no limits.</p>
+        <ul class="pricing-features">
+          <li>Unlimited links &amp; QR codes</li>
+          <li>Full analytics suite</li>
+          <li>Multi-user with admin panel</li>
+          <li>CSV import &amp; export</li>
+          <li>All four colour themes</li>
+          <li>Community support (GitHub)</li>
+        </ul>
+        <a class="btn-outline" href="/app" style="justify-content:center;margin-top:auto">Get started →</a>
+      </div>
+
+      <div class="pricing-card featured reveal reveal-delay-2">
+        <div class="pricing-badge">Coming soon</div>
+        <div class="pricing-name">Cloud</div>
+        <div class="pricing-price">TBD <span>/ month</span></div>
+        <p class="pricing-desc">Managed hosting — no server required. Up and running in seconds.</p>
+        <ul class="pricing-features">
+          <li>Everything in Self-hosted</li>
+          <li>Managed infrastructure</li>
+          <li>Automatic updates &amp; backups</li>
+          <li>Custom domain support</li>
+          <li>Priority email support</li>
+          <li class="dim">On-premise control</li>
+        </ul>
+        <div class="pricing-soon">Notify me when available</div>
+      </div>
+
+      <div class="pricing-card reveal reveal-delay-3">
+        <div class="pricing-badge" style="background:rgba(var(--accent3-rgb),.12);border-color:rgba(var(--accent3-rgb),.3);color:var(--accent3-light)">Coming soon</div>
+        <div class="pricing-name">Team</div>
+        <div class="pricing-price">TBD <span>/ month</span></div>
+        <p class="pricing-desc">Advanced features for teams that need more insight and control.</p>
+        <ul class="pricing-features">
+          <li>Everything in Cloud</li>
+          <li>Advanced team analytics</li>
+          <li>Branded short domains</li>
+          <li>Link password protection</li>
+          <li>API key authentication</li>
+          <li>UTM parameter builder</li>
+        </ul>
+        <div class="pricing-soon" style="border-color:rgba(var(--accent3-rgb),.2)">Notify me when available</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── FINAL CTA ── -->
+<section class="cta-section">
+  <div class="section-label reveal">Ready?</div>
+  <h2 class="reveal reveal-delay-1">Your links are waiting.</h2>
+  <p class="reveal reveal-delay-2">Open the app and start shortening URLs, generating QR codes, and tracking clicks — right now.</p>
+  <div class="reveal reveal-delay-3">
+    <a class="btn-primary" href="/app" style="font-size:13px;padding:14px 32px;display:inline-flex">→ Open App</a>
+  </div>
+  <div class="cta-sub reveal reveal-delay-4">Self-hosted · Open source · MIT licence</div>
+</section>
+
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-logo">
+    <span class="logo-icon-wrap" style="isolation:isolate;position:relative;display:inline-flex"><img style="height:20px;width:20px;object-fit:contain;border-radius:2px;display:block" src="/static/qk-ico.png" alt=""><span style="position:absolute;inset:0;background:var(--accent);mix-blend-mode:hue;border-radius:2px;pointer-events:none"></span></span>
+    QR<span>k</span>nit
+  </div>
+  <div class="footer-links">
+    <a href="https://github.com/jasonMPM/qrknit" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/jasonMPM/qrknit/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+    <a href="/app">App</a>
+  </div>
+  <div class="footer-note">MIT licence · Built with Flask + SQLite</div>
+</footer>
+
+
+<script>
+// ── Theme picker ──────────────────────────────────────────────────────────
+function applyTheme(name) {
+  if (name && name !== 'default') {
+    document.documentElement.setAttribute('data-theme', name);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  localStorage.setItem('qrknit-theme', name || 'default');
+  document.querySelectorAll('.theme-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.theme === (name || 'default'));
+  });
+}
+document.querySelectorAll('.theme-swatch').forEach(s => {
+  s.addEventListener('click', () => applyTheme(s.dataset.theme));
+});
+// Restore active swatch on load
+(function(){
+  const t = localStorage.getItem('qrknit-theme') || 'default';
+  document.querySelectorAll('.theme-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.theme === t);
+  });
+})();
+
+// ── Brand name from /api/config ───────────────────────────────────────────
+(async function(){
+  try {
+    const d = await (await fetch('/api/config')).json();
+    if (!d.app_name) return;
+    const parts = d.app_name.split('.');
+    if (parts.length >= 2) {
+      document.getElementById('lp-brand-pre').textContent = parts[0];
+      document.getElementById('lp-brand-dot').textContent = '.';
+      document.getElementById('lp-brand-suf').textContent = parts.slice(1).join('.');
+    } else {
+      document.getElementById('lp-brand-pre').textContent = '';
+      document.getElementById('lp-brand-dot').textContent = '';
+      document.getElementById('lp-brand-suf').textContent = d.app_name;
+    }
+  } catch(e){}
+})();
+
+// ── Error banner (for /?error= from expired/dead short links) ─────────────
+(function(){
+  const p = new URLSearchParams(location.search);
+  const err = p.get('error');
+  const banner = document.getElementById('error-banner');
+  const msgs = { not_found: 'That short link does not exist.', expired: 'That short link has expired.' };
+  if (err && msgs[err]) {
+    banner.textContent = msgs[err];
+    banner.classList.add('show');
+    setTimeout(() => banner.classList.remove('show'), 5000);
+  }
+})();
+
+// ── Scroll reveal ─────────────────────────────────────────────────────────
+(function(){
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+  // Make hero items visible immediately (they're above the fold)
+  document.querySelectorAll('.hero .reveal').forEach(el => el.classList.add('visible'));
+})();
+
+// ── Mock analytics panel ──────────────────────────────────────────────────
+(function(){
+  const accentRgb = () => getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '0,184,212';
+
+  // Generate plausible-looking demo data
+  const days = 30;
+  const data = Array.from({length: days}, (_, i) => {
+    const base = 20 + Math.sin(i / 4) * 12 + Math.random() * 18;
+    return Math.max(0, Math.round(base));
+  });
+  // Spike a couple of days
+  data[7]  = 58; data[18] = 71; data[23] = 44;
+  const total = data.reduce((s, v) => s + v, 0);
+  const peak  = Math.max(...data);
+
+  // Heatmap data (7 days × 12 two-hour buckets)
+  const hmap = Array.from({length: 7}, () =>
+    Array.from({length: 12}, (_, h) => {
+      const peak_h = (h >= 4 && h <= 8) ? 1.8 : (h >= 1 && h <= 3) ? 0.4 : 1;
+      return Math.round(Math.random() * 8 * peak_h);
+    })
+  );
+  const hmMax = Math.max(...hmap.flat(), 1);
+
+  function render() {
+    const rgb = accentRgb();
+    // Bar chart
+    const chartEl = document.getElementById('mock-chart');
+    if (!chartEl) return;
+    const maxV = Math.max(...data, 1);
+    chartEl.innerHTML = data.map(v => {
+      const pct = (v / maxV * 100).toFixed(0);
+      const op  = v > 0 ? (0.2 + (v / maxV) * 0.7).toFixed(2) : '0.08';
+      return `<div class="mock-bar" style="height:${pct}%;background:rgba(${rgb},${op})"></div>`;
+    }).join('');
+
+    // Heatmap
+    const heatEl = document.getElementById('mock-heatmap');
+    if (!heatEl) return;
+    const days_lbl = ['M','T','W','T','F','S','S'];
+    let html = '';
+    hmap.forEach((row, di) => {
+      html += `<div class="mock-hm-label">${days_lbl[di]}</div>`;
+      row.forEach(v => {
+        const op = v > 0 ? (0.12 + (v / hmMax) * 0.82).toFixed(2) : '0.05';
+        html += `<div class="mock-hm-cell" style="background:rgba(${rgb},${op})"></div>`;
+      });
+    });
+    heatEl.innerHTML = html;
+
+    // Stats
+    document.getElementById('mock-total').textContent     = total.toLocaleString();
+    document.getElementById('mock-peak').textContent      = peak;
+    document.getElementById('mock-countries').textContent = '12';
+  }
+
+  render();
+  // Re-render when theme changes so colours update
+  document.querySelectorAll('.theme-swatch').forEach(s => {
+    s.addEventListener('click', () => setTimeout(render, 50));
+  });
+})();
+</script>
+</body>
+</html>

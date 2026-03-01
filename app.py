@@ -1142,14 +1142,17 @@ def redirect_link(code):
 
 
 # ─────────────────────────────────────────────
-# Frontend — catch-all
+# Frontend routes
 # ─────────────────────────────────────────────
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def frontend(path):
-    if path.startswith('api/') or path.startswith('static/'):
-        return 'Not found', 404
+@app.route('/')
+def landing():
+    with open(os.path.join(os.path.dirname(__file__), 'landing.html')) as f:
+        return f.read()
+
+@app.route('/app', defaults={'subpath': ''})
+@app.route('/app/<path:subpath>')
+def app_frontend(subpath):
     with open(os.path.join(os.path.dirname(__file__), 'index.html')) as f:
         return f.read()
 
