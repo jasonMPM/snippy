@@ -42,6 +42,8 @@ COPY --from=builder /install /usr/local
 # Copy application files
 COPY --chown=qrknit:qrknit app.py .
 COPY --chown=qrknit:qrknit index.html .
+COPY --chown=qrknit:qrknit landing.html .
+COPY --chown=qrknit:qrknit static/ ./static/
 
 # Data volume — SQLite DB lives here
 # Map to host path in Unraid: /mnt/user/appdata/qrknit → /app/data
